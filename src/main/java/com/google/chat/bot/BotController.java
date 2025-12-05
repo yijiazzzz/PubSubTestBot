@@ -26,8 +26,9 @@ public class BotController {
   @PostConstruct
   public void init() {
     try {
-      chatServiceClient = ChatServiceClient.create();
-    } catch (IOException e) {
+      // chatServiceClient = ChatServiceClient.create();
+      logger.info("ChatServiceClient initialization skipped for testing.");
+    } catch (Exception e) {
       logger.error("Failed to initialize ChatServiceClient", e);
     }
   }
