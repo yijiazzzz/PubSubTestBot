@@ -42,6 +42,7 @@
         <dependency>
             <groupId>com.google.cloud</groupId>
             <artifactId>google-cloud-chat</artifactId>
+            <version>0.1.0</version>
         </dependency>
         
         <!-- Google Cloud Pub/Sub (for types, if needed, though we receive JSON via HTTP) -->
