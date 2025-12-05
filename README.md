@@ -37,6 +37,15 @@ gcloud run deploy pubsub-test-bot \
 
 *   `--allow-unauthenticated`: Required for Pub/Sub to push messages to the endpoint without additional auth configuration (for simplicity). For production, configure Pub/Sub to use an authenticated push subscription.
 
+### Alternative: Deploy via Cloud Build (CI/CD)
+
+If you are setting up **Continuous Deployment** from GitHub:
+
+1.  **Build Type**: Select **Dockerfile**.
+2.  **Source location**: Enter `/Dockerfile` (or just leave the default if it detects it).
+    *   This path indicates that the `Dockerfile` is located at the root of your repository.
+    *   The Docker build context will implicitly be the directory containing the Dockerfile (the root).
+
 After deployment, note the **Service URL** (e.g., `https://pubsub-test-bot-xyz-uc.a.run.app`).
 
 ### 3. Configure Pub/Sub Subscription
