@@ -3,7 +3,7 @@ package com.google.chat.bot;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.chat.v1.ChatServiceClient;
-import com.google.chat.v1.ChatServiceSettings; // Import this
+import com.google.chat.v1.ChatServiceSettings;
 import com.google.chat.v1.CreateMessageRequest;
 import com.google.chat.v1.Message;
 import jakarta.annotation.PostConstruct;
@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.io.IOException;
 import java.util.Base64;
+import java.util.Iterator;
 
 @RestController
 public class BotController {
@@ -36,7 +37,6 @@ public class BotController {
       logger.info("ChatServiceClient initialized successfully.");
     } catch (Exception e) {
       logger.error("Failed to initialize ChatServiceClient", e);
-      // chatServiceClient will be null, and subsequent calls will fail
     }
   }
 
@@ -48,70 +48,90 @@ public class BotController {
     }
   }
 
-  // ... rest of the class remains the same ...
-
   @PostMapping("/")
   public void receiveMessage(@RequestBody String body) {
+    logger.debug("receiveMessage START - Raw body: {}", body);
     if (chatServiceClient == null) {
       logger.error("Cannot process message, ChatServiceClient is not initialized.");
-      return; // Or throw an error to indicate service unavailability
+      return;
     }
     try {
+      logger.debug("receiveMessage TRY block entry");
       JsonNode root = objectMapper.readTree(body);
       JsonNode messageNode = root.path("message");
 
-      // Pub/Sub push messages wrap the payload in "message" -> "data"
       if (messageNode.isMissingNode()) {
         logger.warn("Invalid Pub/Sub request: missing 'message' field");
         return;
       }
+      logger.debug("Found 'message' field");
 
       String data = messageNode.path("data").asText();
       if (data.isEmpty()) {
         logger.warn("Invalid Pub/Sub request: missing 'data' field");
         return;
       }
+      logger.debug("Found 'data' field");
 
       String decodedData = new String(Base64.getDecoder().decode(data));
-      logger.info("Received event: " + decodedData);
+      logger.info("Received event raw: " + decodedData.replace("\n", "\\n").replace("\r", "\\r"));
 
       JsonNode event = objectMapper.readTree(decodedData);
-      String eventType = event.path("type").asText();
+      logger.debug("Successfully parsed decodedData");
 
-      if ("MESSAGE".equals(eventType)) {
-        handleMessageEvent(event);
+      JsonNode messagePayload = event.path("messagePayload");
+      if (messagePayload.isMissingNode()) {
+        logger.warn("Event is missing 'messagePayload' field. Logging event keys:");
+        Iterator<String> fieldNames = event.fieldNames();
+        while (fieldNames.hasNext()) {
+          logger.warn("Event key: {}", fieldNames.next());
+        }
+        return;
       }
+      logger.info("Found 'messagePayload' field, processing as message event.");
+      handleMessageEvent(messagePayload);
 
     } catch (Exception e) {
-      logger.error("Error processing message", e);
+      logger.error("Error in receiveMessage", e);
     }
+    logger.debug("receiveMessage END");
   }
 
-  private void handleMessageEvent(JsonNode event) {
-    JsonNode userNode = event.path("user");
-    if (userNode.isMissingNode()) {
-      logger.warn("User node is missing in the event.");
+  private void handleMessageEvent(JsonNode messagePayload) {
+    logger.debug("handleMessageEvent START");
+
+    JsonNode messageNode = messagePayload.path("message");
+    if (messageNode.isMissingNode()) {
+      logger.warn("messagePayload is missing 'message' field.");
       return;
     }
-    String userType = userNode.path("type").asText("UNKNOWN");
-    logger.info("Handling message from user type: {}", userType);
 
-    if ("BOT".equals(userType)) {
+    JsonNode senderNode = messageNode.path("sender");
+    if (senderNode.isMissingNode()) {
+      logger.warn("Sender node is missing in message.");
+      return;
+    }
+    String senderType = senderNode.path("type").asText("UNKNOWN");
+    logger.info("Handling message from sender type: {}", senderType);
+
+    if ("BOT".equals(senderType)) {
       logger.info("Ignoring message because sender is a BOT.");
       return;
     }
 
-    String spaceName = event.path("space").path("name").asText();
+    JsonNode spaceNode = messagePayload.path("space");
+    String spaceName = spaceNode.path("name").asText();
     if (spaceName.isEmpty()) {
-      logger.warn("Space name is missing or empty in the event.");
+      logger.warn("Space name is missing or empty in messagePayload.space.");
       return;
     }
     logger.info("Processing message in space: {}", spaceName);
 
-    String text = event.path("message").path("text").asText();
-    String senderName = userNode.path("displayName").asText();
+    String text = messageNode.path("text").asText();
+    String senderName = senderNode.path("displayName").asText();
 
     reply(spaceName, "Hello " + senderName + ", you said: " + text);
+    logger.debug("handleMessageEvent END");
   }
 
   private void reply(String spaceName, String text) {
@@ -119,14 +139,13 @@ public class BotController {
       logger.error("ChatServiceClient is not initialized, cannot send reply.");
       return;
     }
-
     try {
       Message message = Message.newBuilder().setText(text).build();
       CreateMessageRequest request =
           CreateMessageRequest.newBuilder().setParent(spaceName).setMessage(message).build();
       logger.info("Attempting to send reply to {}: {}", spaceName, text);
-      chatServiceClient.createMessage(request);
-      logger.info("Sent reply to " + spaceName);
+      Message response = chatServiceClient.createMessage(request);
+      logger.info("Sent reply to {}, response ID: {}", spaceName, response.getName());
     } catch (Exception e) {
       logger.error("Failed to send reply to " + spaceName, e);
     }
