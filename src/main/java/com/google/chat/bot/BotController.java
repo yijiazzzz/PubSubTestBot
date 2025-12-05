@@ -88,21 +88,28 @@ public class BotController {
   }
 
   private void handleMessageEvent(JsonNode event) {
-    // Avoid infinite loops by ignoring messages from bots
     JsonNode userNode = event.path("user");
-    if (userNode.isMissingNode() || "BOT".equals(userNode.path("type").asText())) {
-      logger.debug("Ignoring message from bot or missing user type.");
+    if (userNode.isMissingNode()) {
+      logger.warn("User node is missing in the event.");
+      return;
+    }
+    String userType = userNode.path("type").asText("UNKNOWN");
+    logger.info("Handling message from user type: {}", userType);
+
+    if ("BOT".equals(userType)) {
+      logger.info("Ignoring message because sender is a BOT.");
       return;
     }
 
     String spaceName = event.path("space").path("name").asText();
-    String text = event.path("message").path("text").asText();
-    String senderName = userNode.path("displayName").asText();
-
     if (spaceName.isEmpty()) {
-      logger.warn("Space name is missing in the event.");
+      logger.warn("Space name is missing or empty in the event.");
       return;
     }
+    logger.info("Processing message in space: {}", spaceName);
+
+    String text = event.path("message").path("text").asText();
+    String senderName = userNode.path("displayName").asText();
 
     reply(spaceName, "Hello " + senderName + ", you said: " + text);
   }
