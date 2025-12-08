@@ -119,12 +119,17 @@ public class BotController {
 
       JsonNode messagePayload = chatNode.path("messagePayload");
       if (messagePayload.isMissingNode()) {
+        // Try appCommandPayload for slash commands
+        messagePayload = chatNode.path("appCommandPayload");
+      }
+
+      if (messagePayload.isMissingNode()) {
         logger.warn(
-            "Event.chat is missing 'messagePayload' field. Check if this is a different event"
-                + " type.");
+            "Event.chat is missing 'messagePayload' and 'appCommandPayload' field. Check if this is"
+                + " a different event type.");
         return;
       }
-      logger.info("Found 'chat.messagePayload' field, processing as message event.");
+      logger.info("Found payload field, processing event.");
       handleMessageEvent(messagePayload);
 
     } catch (Exception e) {
