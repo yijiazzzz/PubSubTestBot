@@ -166,25 +166,44 @@ public class BotController {
 
     String text = messageNode.path("text").asText();
     String senderName = senderNode.path("displayName").asText();
+    String threadName = messageNode.path("thread").path("name").asText();
 
-    reply(spaceName, "Hello " + senderName + ", you said: " + text);
+    if (text.isEmpty()) {
+      text = "[Media/Attachment]";
+    }
+
+    reply(spaceName, threadName, "Hello " + senderName + ", you said: " + text);
     logger.info("handleMessageEvent END");
   }
 
-  private void reply(String spaceName, String text) {
+  private void reply(String spaceName, String threadName, String text) {
     if (chatServiceClient == null) {
       logger.error("ChatServiceClient is not initialized, cannot send reply.");
       return;
     }
     try {
-      Message message = Message.newBuilder().setText(text).build();
+      Message.Builder messageBuilder = Message.newBuilder().setText(text);
+
+      // If we have a thread name, reply in that thread
+      if (threadName != null && !threadName.isEmpty()) {
+        messageBuilder.setThread(
+            com.google.chat.v1.Thread.newBuilder().setName(threadName).build());
+      }
+
+      Message message = messageBuilder.build();
       CreateMessageRequest request =
           CreateMessageRequest.newBuilder().setParent(spaceName).setMessage(message).build();
-      logger.info("Attempting to send reply to {}: {}", spaceName, text);
+
+      logger.info("Attempting to send reply to {} (thread: {}): {}", spaceName, threadName, text);
       Message response = chatServiceClient.createMessage(request);
       logger.info("Sent reply to {}, response ID: {}", spaceName, response.getName());
     } catch (Exception e) {
       logger.error("Failed to send reply to " + spaceName, e);
     }
+  }
+
+  // Overload for ADDED_TO_SPACE (no thread)
+  private void reply(String spaceName, String text) {
+    reply(spaceName, null, text);
   }
 }
