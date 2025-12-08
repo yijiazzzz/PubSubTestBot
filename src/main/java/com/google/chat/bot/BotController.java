@@ -34,6 +34,7 @@ public class BotController {
   @PostConstruct
   public void init() {
     try {
+      System.out.println("BotController.init() STARTING");
       logger.info(
           "Initializing ChatServiceClient with endpoint: {} and scope: {}",
           CHAT_API_ENDPOINT,
@@ -52,7 +53,10 @@ public class BotController {
 
       chatServiceClient = ChatServiceClient.create(chatServiceSettings);
       logger.info("ChatServiceClient initialized successfully.");
-    } catch (Exception e) {
+      System.out.println("BotController.init() COMPLETED SUCCESSFULY");
+    } catch (Throwable e) {
+      System.err.println("CRITICAL FAILURE IN BotController.init(): " + e.getMessage());
+      e.printStackTrace(); // Ensure it goes to stderr/stdout
       logger.error("Failed to initialize ChatServiceClient", e);
     }
   }
