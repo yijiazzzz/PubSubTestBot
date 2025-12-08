@@ -164,9 +164,17 @@ public class BotController {
     }
     logger.info("Processing message in space: {}", spaceName);
 
+    String threadName = messageNode.path("thread").path("name").asText();
+
+    // Check for Slash Command
+    if (messageNode.has("slashCommand")) {
+      logger.info("Slash command detected.");
+      reply(spaceName, threadName, "You invoked the /pubsubtest slash command.");
+      return;
+    }
+
     String text = messageNode.path("text").asText();
     String senderName = senderNode.path("displayName").asText();
-    String threadName = messageNode.path("thread").path("name").asText();
 
     if (text.isEmpty()) {
       text = "[Media/Attachment]";
