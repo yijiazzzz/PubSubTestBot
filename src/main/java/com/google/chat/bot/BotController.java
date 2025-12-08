@@ -2,10 +2,13 @@ package com.google.chat.bot;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.api.gax.core.FixedCredentialsProvider; // Import this
+import com.google.auth.oauth2.GoogleCredentials; // Import this
 import com.google.chat.v1.ChatServiceClient;
 import com.google.chat.v1.ChatServiceSettings;
 import com.google.chat.v1.CreateMessageRequest;
 import com.google.chat.v1.Message;
+import com.google.common.collect.ImmutableList; // Import this
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
@@ -26,13 +29,27 @@ public class BotController {
   private ChatServiceClient chatServiceClient;
 
   private static final String CHAT_API_ENDPOINT = "chat.googleapis.com:443";
+  private static final String CHAT_SCOPE = "https://www.googleapis.com/auth/chat.bot";
 
   @PostConstruct
   public void init() {
     try {
-      logger.info("Initializing ChatServiceClient with endpoint: {}", CHAT_API_ENDPOINT);
+      logger.info(
+          "Initializing ChatServiceClient with endpoint: {} and scope: {}",
+          CHAT_API_ENDPOINT,
+          CHAT_SCOPE);
+
+      // Obtain Application Default Credentials and add the chat.bot scope
+      GoogleCredentials credentials =
+          GoogleCredentials.getApplicationDefault().createScoped(ImmutableList.of(CHAT_SCOPE));
+
       ChatServiceSettings chatServiceSettings =
-          ChatServiceSettings.newBuilder().setEndpoint(CHAT_API_ENDPOINT).build();
+          ChatServiceSettings.newBuilder()
+              .setEndpoint(CHAT_API_ENDPOINT)
+              .setCredentialsProvider(
+                  FixedCredentialsProvider.create(credentials)) // Use scoped credentials
+              .build();
+
       chatServiceClient = ChatServiceClient.create(chatServiceSettings);
       logger.info("ChatServiceClient initialized successfully.");
     } catch (Exception e) {

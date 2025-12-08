@@ -56,9 +56,29 @@
             <artifactId>google-cloud-chat</artifactId>
             <version>0.8.0</version>
         </dependency>
-        
-        <!-- Google Cloud Pub/Sub (for types, if needed, though we receive JSON via HTTP) -->
-        <!-- We'll parse JSON manually to avoid heavy deps if we just receive Push -->
+
+        <!-- Google Auth Library for Scopes -->
+        <dependency>
+            <groupId>com.google.auth</groupId>
+            <artifactId>google-auth-library-oauth2-http</artifactId>
+        </dependency>
+
+        <!-- GAX for FixedCredentialsProvider -->
+         <dependency>
+            <groupId>com.google.api</groupId>
+            <artifactId>gax</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.google.api</groupId>
+            <artifactId>gax-grpc</artifactId>
+        </dependency>
+
+        <!-- Guava for ImmutableList -->
+        <dependency>
+            <groupId>com.google.guava</groupId>
+            <artifactId>guava</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
