@@ -108,12 +108,24 @@ public class BotController {
       logger.info("Found 'chat' field");
 
       // Check for ADDED_TO_SPACE event
-      JsonNode eventTypeNode = event.path("commonEventObject").path("eventType");
-      if (!eventTypeNode.isMissingNode() && "ADDED_TO_SPACE".equals(eventTypeNode.asText())) {
+      String eventType = event.path("commonEventObject").path("eventType").asText();
+      if (eventType.isEmpty()) {
+        eventType = event.path("type").asText();
+      }
+      logger.info("Detected event type: {}", eventType);
+
+      if ("ADDED_TO_SPACE".equals(eventType)) {
         logger.info("Received ADDED_TO_SPACE event. Returning 200 OK.");
         JsonNode spaceNode = chatNode.path("space");
+        if (spaceNode.isMissingNode()) {
+          spaceNode = event.path("space");
+        }
         String spaceName = spaceNode.path("name").asText();
-        reply(spaceName, "Thanks for adding me!");
+        if (!spaceName.isEmpty()) {
+          reply(spaceName, "Thanks for adding me!");
+        } else {
+          logger.warn("Received ADDED_TO_SPACE but could not find space name.");
+        }
         return;
       }
 
