@@ -148,7 +148,7 @@ public class BotController {
       logger.error("Error in receiveMessage", e);
       e.printStackTrace(); // Ensure stack trace is in stdout
     }
-    logger.info("receiveMessage END");
+    logger.info("receiveMessage END - Returning HTTP 200 OK");
   }
 
   private void handleMessageEvent(JsonNode messagePayload) {
@@ -220,8 +220,12 @@ public class BotController {
           CreateMessageRequest.newBuilder().setParent(spaceName).setMessage(message).build();
 
       logger.info("Attempting to send reply to {} (thread: {}): {}", spaceName, threadName, text);
+      // Log request payload to stdout
+      System.out.println("Chat API Request Payload: " + request);
       Message response = chatServiceClient.createMessage(request);
       logger.info("Sent reply to {}, response ID: {}", spaceName, response.getName());
+      // Log response payload to stdout
+      System.out.println("Chat API Response Payload: " + response);
     } catch (Exception e) {
       logger.error("Failed to send reply to " + spaceName, e);
     }
