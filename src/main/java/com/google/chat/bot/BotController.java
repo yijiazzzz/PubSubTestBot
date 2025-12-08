@@ -66,15 +66,24 @@ public class BotController {
   }
 
   @PostMapping("/")
-  public void receiveMessage(@RequestBody String body) {
+  public void receiveMessage(
+      @RequestBody String body,
+      @org.springframework.web.bind.annotation.RequestHeader
+          java.util.Map<String, String> headers) {
     System.out.println(
         "receiveMessage START - Raw body length: " + (body != null ? body.length() : "null"));
-    logger.info("receiveMessage START - Raw body: {}", body);
-    if (chatServiceClient == null) {
-      logger.error("Cannot process message, ChatServiceClient is not initialized.");
-      return;
+    if (headers != null) {
+      System.out.println("Headers: " + headers);
     }
+    logger.info("receiveMessage START - Raw body: {}", body);
+
+    // Always return 200 OK by catching everything, to prevent Pub/Sub retries on logic errors.
     try {
+      if (chatServiceClient == null) {
+        logger.error("Cannot process message, ChatServiceClient is not initialized.");
+        return;
+      }
+
       logger.info("receiveMessage TRY block entry");
       JsonNode root = objectMapper.readTree(body);
       JsonNode messageNode = root.path("message");
@@ -99,11 +108,6 @@ public class BotController {
 
       JsonNode event = objectMapper.readTree(decodedData);
       logger.info("Successfully parsed decodedData");
-
-      // Determine the event type from the wrapper or payload
-      // Note: Add-on events wrapped in "chat" usually implies a specific structure.
-      // We'll check the commonEventObject to see the event type if available,
-      // or look for specific fields.
 
       JsonNode chatNode = event.path("chat");
       if (chatNode.isMissingNode()) {
@@ -132,48 +136,61 @@ public class BotController {
       logger.info("Found 'chat.messagePayload' field, processing as message event.");
       handleMessageEvent(messagePayload);
 
-    } catch (Exception e) {
-      logger.error("Error in receiveMessage", e);
+    } catch (Throwable e) {
+      // Catch Throwable to catch everything including NoClassDefFoundError etc.
+      logger.error("CRITICAL ERROR in receiveMessage", e);
       e.printStackTrace(); // Ensure stack trace is in stdout
+    } finally {
+      logger.info("receiveMessage END");
     }
-    logger.info("receiveMessage END");
   }
 
   private void handleMessageEvent(JsonNode messagePayload) {
-    logger.info("handleMessageEvent START");
+    try {
+      logger.info("handleMessageEvent START");
 
-    JsonNode messageNode = messagePayload.path("message");
-    if (messageNode.isMissingNode()) {
-      logger.warn("messagePayload is missing 'message' field.");
-      return;
+      JsonNode messageNode = messagePayload.path("message");
+      if (messageNode.isMissingNode()) {
+        logger.warn("messagePayload is missing 'message' field.");
+        return;
+      }
+
+      JsonNode senderNode = messageNode.path("sender");
+      if (senderNode.isMissingNode()) {
+        logger.warn("Sender node is missing in message.");
+        return;
+      }
+      String senderType = senderNode.path("type").asText("UNKNOWN");
+      logger.info("Handling message from sender type: {}", senderType);
+
+      if ("BOT".equals(senderType)) {
+        logger.info("Ignoring message because sender is a BOT.");
+        return;
+      }
+
+      JsonNode spaceNode = messagePayload.path("space");
+      String spaceName = spaceNode.path("name").asText();
+      String spaceType = spaceNode.path("type").asText("UNKNOWN");
+      if (spaceName.isEmpty()) {
+        logger.warn("Space name is missing or empty in messagePayload.space.");
+        return;
+      }
+      logger.info("Processing message in space: {} (Type: {})", spaceName, spaceType);
+
+      String text = messageNode.path("text").asText();
+      String senderName = senderNode.path("displayName").asText();
+
+      if (text == null || text.trim().isEmpty()) {
+        logger.info("Received empty text message (possibly an attachment/image).");
+        text = "[Media/Attachment]";
+      }
+
+      reply(spaceName, "Hello " + senderName + ", you said: " + text);
+      logger.info("handleMessageEvent END");
+    } catch (Exception e) {
+      logger.error("Error in handleMessageEvent", e);
+      e.printStackTrace();
     }
-
-    JsonNode senderNode = messageNode.path("sender");
-    if (senderNode.isMissingNode()) {
-      logger.warn("Sender node is missing in message.");
-      return;
-    }
-    String senderType = senderNode.path("type").asText("UNKNOWN");
-    logger.info("Handling message from sender type: {}", senderType);
-
-    if ("BOT".equals(senderType)) {
-      logger.info("Ignoring message because sender is a BOT.");
-      return;
-    }
-
-    JsonNode spaceNode = messagePayload.path("space");
-    String spaceName = spaceNode.path("name").asText();
-    if (spaceName.isEmpty()) {
-      logger.warn("Space name is missing or empty in messagePayload.space.");
-      return;
-    }
-    logger.info("Processing message in space: {}", spaceName);
-
-    String text = messageNode.path("text").asText();
-    String senderName = senderNode.path("displayName").asText();
-
-    reply(spaceName, "Hello " + senderName + ", you said: " + text);
-    logger.info("handleMessageEvent END");
   }
 
   private void reply(String spaceName, String text) {
