@@ -67,13 +67,15 @@ public class BotController {
 
   @PostMapping("/")
   public void receiveMessage(@RequestBody String body) {
-    logger.debug("receiveMessage START - Raw body: {}", body);
+    System.out.println(
+        "receiveMessage START - Raw body length: " + (body != null ? body.length() : "null"));
+    logger.info("receiveMessage START - Raw body: {}", body);
     if (chatServiceClient == null) {
       logger.error("Cannot process message, ChatServiceClient is not initialized.");
       return;
     }
     try {
-      logger.debug("receiveMessage TRY block entry");
+      logger.info("receiveMessage TRY block entry");
       JsonNode root = objectMapper.readTree(body);
       JsonNode messageNode = root.path("message");
 
@@ -81,31 +83,50 @@ public class BotController {
         logger.warn("Invalid Pub/Sub request: missing 'message' field");
         return;
       }
-      logger.debug("Found 'message' field");
+      logger.info("Found 'message' field");
 
       String data = messageNode.path("data").asText();
       if (data.isEmpty()) {
         logger.warn("Invalid Pub/Sub request: missing 'data' field");
         return;
       }
-      logger.debug("Found 'data' field");
+      logger.info("Found 'data' field");
 
       String decodedData = new String(Base64.getDecoder().decode(data));
+      // Log to stdout to guarantee visibility
+      System.out.println("Received event raw: " + decodedData);
       logger.info("Received event raw: " + decodedData.replace("\n", "\\n").replace("\r", "\\r"));
 
       JsonNode event = objectMapper.readTree(decodedData);
-      logger.debug("Successfully parsed decodedData");
+      logger.info("Successfully parsed decodedData");
+
+      // Determine the event type from the wrapper or payload
+      // Note: Add-on events wrapped in "chat" usually implies a specific structure.
+      // We'll check the commonEventObject to see the event type if available,
+      // or look for specific fields.
 
       JsonNode chatNode = event.path("chat");
       if (chatNode.isMissingNode()) {
         logger.warn("Event is missing 'chat' field.");
         return;
       }
-      logger.debug("Found 'chat' field");
+      logger.info("Found 'chat' field");
+
+      // Check for ADDED_TO_SPACE event
+      JsonNode eventTypeNode = event.path("commonEventObject").path("eventType");
+      if (!eventTypeNode.isMissingNode() && "ADDED_TO_SPACE".equals(eventTypeNode.asText())) {
+        logger.info("Received ADDED_TO_SPACE event. Returning 200 OK.");
+        JsonNode spaceNode = chatNode.path("space");
+        String spaceName = spaceNode.path("name").asText();
+        reply(spaceName, "Thanks for adding me!");
+        return;
+      }
 
       JsonNode messagePayload = chatNode.path("messagePayload");
       if (messagePayload.isMissingNode()) {
-        logger.warn("Event.chat is missing 'messagePayload' field.");
+        logger.warn(
+            "Event.chat is missing 'messagePayload' field. Check if this is a different event"
+                + " type.");
         return;
       }
       logger.info("Found 'chat.messagePayload' field, processing as message event.");
@@ -113,12 +134,13 @@ public class BotController {
 
     } catch (Exception e) {
       logger.error("Error in receiveMessage", e);
+      e.printStackTrace(); // Ensure stack trace is in stdout
     }
-    logger.debug("receiveMessage END");
+    logger.info("receiveMessage END");
   }
 
   private void handleMessageEvent(JsonNode messagePayload) {
-    logger.debug("handleMessageEvent START");
+    logger.info("handleMessageEvent START");
 
     JsonNode messageNode = messagePayload.path("message");
     if (messageNode.isMissingNode()) {
@@ -151,7 +173,7 @@ public class BotController {
     String senderName = senderNode.path("displayName").asText();
 
     reply(spaceName, "Hello " + senderName + ", you said: " + text);
-    logger.debug("handleMessageEvent END");
+    logger.info("handleMessageEvent END");
   }
 
   private void reply(String spaceName, String text) {
