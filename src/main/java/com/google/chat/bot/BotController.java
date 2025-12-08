@@ -79,16 +79,19 @@ public class BotController {
       JsonNode event = objectMapper.readTree(decodedData);
       logger.debug("Successfully parsed decodedData");
 
-      JsonNode messagePayload = event.path("messagePayload");
-      if (messagePayload.isMissingNode()) {
-        logger.warn("Event is missing 'messagePayload' field. Logging event keys:");
-        Iterator<String> fieldNames = event.fieldNames();
-        while (fieldNames.hasNext()) {
-          logger.warn("Event key: {}", fieldNames.next());
-        }
+      JsonNode chatNode = event.path("chat");
+      if (chatNode.isMissingNode()) {
+        logger.warn("Event is missing 'chat' field.");
         return;
       }
-      logger.info("Found 'messagePayload' field, processing as message event.");
+      logger.debug("Found 'chat' field");
+
+      JsonNode messagePayload = chatNode.path("messagePayload");
+      if (messagePayload.isMissingNode()) {
+        logger.warn("Event.chat is missing 'messagePayload' field.");
+        return;
+      }
+      logger.info("Found 'chat.messagePayload' field, processing as message event.");
       handleMessageEvent(messagePayload);
 
     } catch (Exception e) {
