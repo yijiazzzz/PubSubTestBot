@@ -57,6 +57,12 @@
             <version>0.18.0</version>
         </dependency>
 
+        <dependency>
+            <groupId>com.google.api.grpc</groupId>
+            <artifactId>proto-google-cloud-chat-v1</artifactId>
+            <version>0.18.0</version>
+        </dependency>
+
         <!-- Google Auth Library for Scopes -->
         <dependency>
             <groupId>com.google.auth</groupId>
