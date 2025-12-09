@@ -115,11 +115,14 @@ public class BotController {
       }
       logger.info("Detected event type: {}", eventType);
 
-      if ("ADDED_TO_SPACE".equals(eventType)) {
+      if ("ADDED_TO_SPACE".equals(eventType) || chatNode.has("addedToSpacePayload")) {
         logger.info("Received ADDED_TO_SPACE event. Returning 200 OK.");
         JsonNode spaceNode = chatNode.path("space");
         if (spaceNode.isMissingNode()) {
           spaceNode = event.path("space");
+        }
+        if (spaceNode.isMissingNode()) {
+          spaceNode = chatNode.path("addedToSpacePayload").path("space");
         }
         String spaceName = spaceNode.path("name").asText();
         if (!spaceName.isEmpty()) {
