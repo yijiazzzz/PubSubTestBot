@@ -4,6 +4,16 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.api.gax.core.FixedCredentialsProvider; // Import this
 import com.google.auth.oauth2.GoogleCredentials; // Import this
+import com.google.apps.card.v1.Action;
+import com.google.apps.card.v1.Button;
+import com.google.apps.card.v1.ButtonList;
+import com.google.apps.card.v1.Card;
+import com.google.apps.card.v1.CardHeader;
+import com.google.apps.card.v1.OnClick;
+import com.google.apps.card.v1.Section;
+import com.google.apps.card.v1.TextParagraph;
+import com.google.apps.card.v1.Widget;
+import com.google.chat.v1.CardWithId;
 import com.google.chat.v1.ChatServiceClient;
 import com.google.chat.v1.ChatServiceSettings;
 import com.google.chat.v1.CreateMessageRequest;
@@ -115,6 +125,11 @@ public class BotController {
       }
       logger.info("Detected event type: {}", eventType);
 
+      if ("CARD_CLICKED".equals(eventType)) {
+        handleCardClicked(event, chatNode);
+        return;
+      }
+
       if ("ADDED_TO_SPACE".equals(eventType) || chatNode.has("addedToSpacePayload")) {
         logger.info("Received ADDED_TO_SPACE event. Returning 200 OK.");
         JsonNode spaceNode = chatNode.path("space");
@@ -189,8 +204,13 @@ public class BotController {
 
     // Check for Slash Command
     if (messageNode.has("slashCommand")) {
-      logger.info("Slash command detected.");
-      reply(spaceName, threadName, "You invoked the /pubsubtest slash command.");
+      long commandId = messageNode.path("slashCommand").path("commandId").asLong();
+      logger.info("Slash command detected: {}", commandId);
+      if (commandId == 1) {
+        reply(spaceName, threadName, "You invoked the /pubsubtest slash command.");
+      } else if (commandId == 2) {
+        sendCardWithButton(spaceName, threadName);
+      }
       return;
     }
 
@@ -236,5 +256,70 @@ public class BotController {
   // Overload for ADDED_TO_SPACE (no thread)
   private void reply(String spaceName, String text) {
     reply(spaceName, null, text);
+  }
+
+  private void sendCardWithButton(String spaceName, String threadName) {
+    if (chatServiceClient == null) {
+      logger.error("ChatServiceClient is not initialized, cannot send card.");
+      return;
+    }
+    try {
+      Widget buttonWidget =
+          Widget.newBuilder()
+              .setButtonList(
+                  ButtonList.newBuilder()
+                      .addButtons(
+                          Button.newBuilder()
+                              .setText("Click me")
+                              .setOnClick(
+                                  OnClick.newBuilder()
+                                      .setAction(
+                                          Action.newBuilder()
+                                              .setFunction("sendTextMessage")
+                                              .build())
+                                      .build())
+                              .build())
+                      .build())
+              .build();
+
+      Card card =
+          Card.newBuilder()
+              .setHeader(CardHeader.newBuilder().setTitle("Card with Button").build())
+              .addSections(Section.newBuilder().addWidgets(buttonWidget).build())
+              .build();
+
+      CardWithId cardWithId = CardWithId.newBuilder().setCardId("card-1").setCard(card).build();
+
+      Message.Builder messageBuilder = Message.newBuilder().addCardsV2(cardWithId);
+
+      if (threadName != null && !threadName.isEmpty()) {
+        messageBuilder.setThread(
+            com.google.chat.v1.Thread.newBuilder().setName(threadName).build());
+      }
+
+      CreateMessageRequest request =
+          CreateMessageRequest.newBuilder()
+              .setParent(spaceName)
+              .setMessage(messageBuilder.build())
+              .build();
+
+      chatServiceClient.createMessage(request);
+      logger.info("Sent card with button to {}", spaceName);
+
+    } catch (Exception e) {
+      logger.error("Failed to send card to " + spaceName, e);
+    }
+  }
+
+  private void handleCardClicked(JsonNode event, JsonNode chatNode) {
+    String function = event.path("commonEventObject").path("invokedFunction").asText();
+    logger.info("Handling card click with function: {}", function);
+    if ("sendTextMessage".equals(function)) {
+      String spaceName = chatNode.path("space").path("name").asText();
+      if (spaceName.isEmpty()) {
+        spaceName = event.path("space").path("name").asText();
+      }
+      reply(spaceName, "You clicked the button!");
+    }
   }
 }
