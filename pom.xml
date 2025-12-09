@@ -57,11 +57,10 @@
             <artifactId>google-cloud-chat</artifactId>
         </dependency>
 
-        <!-- Google Apps Card v1 -->
+        <!-- Common Protos including google.apps.card.v1 -->
         <dependency>
-            <groupId>com.google.apps</groupId>
-            <artifactId>google-apps-card-v1</artifactId>
-            <version>0.0.4</version>
+            <groupId>com.google.api.grpc</groupId>
+            <artifactId>proto-google-common-protos</artifactId>
         </dependency>
 
         <!-- Google Auth Library for Scopes -->
