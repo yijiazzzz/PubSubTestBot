@@ -98,37 +98,24 @@ public class BotController {
       JsonNode event = objectMapper.readTree(decodedData);
       logger.info("Parsed event JSON: {}", event.toString());
 
+      JsonNode commonEventObject = event.path("commonEventObject");
       JsonNode chatNode = event.path("chat");
-      if (chatNode.isMissingNode()) {
-        logger.warn("Event is missing 'chat' field.");
-        return;
-      }
 
-      // Chaddon event dispatching based on payload type
-      if (chatNode.has("messagePayload")) {
-        logger.info("Detected messagePayload, treating as standard message.");
-        handleChatMessage(chatNode.path("messagePayload"));
+      // GWAO Event Dispatching
+      if (commonEventObject.has("invokedFunction")) {
+        logger.info("Detected invokedFunction, routing to handleCardClicked");
+        handleCardClicked(event);
       } else if (chatNode.has("appCommandPayload")) {
         logger.info("Detected appCommandPayload, treating as slash command.");
         handleAppCommand(chatNode.path("appCommandPayload"));
+      } else if (chatNode.has("messagePayload")) {
+        logger.info("Detected messagePayload, treating as standard message.");
+        handleChatMessage(chatNode.path("messagePayload"));
       } else if (chatNode.has("addedToSpacePayload")) {
         logger.info("Detected addedToSpacePayload.");
         handleAddedToSpace(chatNode.path("addedToSpacePayload"));
-      } else if (event.path("commonEventObject").path("invokedFunction").isTextual()) {
-        // Card clicks are identified by invokedFunction in commonEventObject
-        String function = event.path("commonEventObject").path("invokedFunction").asText();
-        logger.info("Detected CARD_CLICKED with function: {}", function);
-        handleCardClicked(event);
       } else {
-        // Fallback for other event types from commonEventObject if needed
-        String hostApp = event.path("commonEventObject").path("hostApp").asText();
-        if ("CHAT".equals(hostApp)) {
-          // Try to get event type from commonEventObject, though it's not always standard
-          String commonEventType = event.path("commonEventObject").path("eventType").asText();
-          logger.warn("Unhandled Chat event structure. CommonEventType: '{}'", commonEventType);
-        } else {
-          logger.warn("Received event for non-Chat hostApp: {}", hostApp);
-        }
+        logger.warn("Unhandled Chat event structure.");
       }
 
     } catch (Exception e) {
@@ -177,7 +164,6 @@ public class BotController {
   }
 
   private void handleChatMessage(JsonNode messagePayload) {
-    // Standard text messages from users
     logger.info("handleChatMessage START");
     JsonNode messageNode = messagePayload.path("message");
     String spaceName = messagePayload.path("space").path("name").asText();
@@ -197,37 +183,28 @@ public class BotController {
 
   private void handleCardClicked(JsonNode event) {
     logger.info("handleCardClicked START - Full Event: {}", event.toString());
-    String actionMethodName = event.path("commonEventObject").path("invokedFunction").asText();
+    JsonNode commonEventObject = event.path("commonEventObject");
+    String actionMethodName = commonEventObject.path("invokedFunction").asText();
     logger.info("Handling card click with function: {}", actionMethodName);
 
-    JsonNode chatNode = event.path("chat");
-    // The space can also be under commonEventObject.hostAppMetadata.chat.space
-    String spaceName = chatNode.path("space").path("name").asText();
+    // Get spaceName from hostAppMetadata or fall back to event.chat
+    String spaceName =
+        commonEventObject.path("hostAppMetadata").path("chat").path("space").path("name").asText();
     if (spaceName.isEmpty()) {
-      spaceName =
-          event
-              .path("commonEventObject")
-              .path("hostAppMetadata")
-              .path("chat")
-              .path("space")
-              .path("name")
-              .asText();
-      if (!spaceName.isEmpty()) logger.info("Found spaceName in commonEventObject");
-    }
-    if (spaceName.isEmpty()) {
-      // Fallback to top level event.space
-      spaceName = event.path("space").path("name").asText();
-      if (!spaceName.isEmpty()) logger.info("Found spaceName in event.space");
+      logger.info("Space name not in hostAppMetadata, trying event.chat.space");
+      spaceName = event.path("chat").path("space").path("name").asText();
     }
 
     if (spaceName.isEmpty()) {
-      logger.warn("Space name missing in card click event.");
+      logger.error("CRITICAL: Space name missing in card click event. Cannot reply.");
       return;
     }
 
     if (ACTION_SEND_MESSAGE.equals(actionMethodName)) {
       logger.info("Matched ACTION_SEND_MESSAGE. Space: {}", spaceName);
-      reply(spaceName, null, "You clicked the button on the Chaddon card!");
+      // Card click events from GWAO don't easily provide the original thread context
+      // To reply in thread, you'd need to pass the thread name as a parameter in the Action
+      reply(spaceName, null, "Button clicked on Chaddon card!");
     } else {
       logger.warn("Unhandled card action: {}", actionMethodName);
     }
@@ -235,10 +212,9 @@ public class BotController {
   }
 
   // --- Helper Methods ---
-
   private void reply(String spaceName, String threadName, String text) {
     if (chatServiceClient == null) {
-      logger.error("ChatServiceClient is not initialized.");
+      logger.error("ChatServiceClient not initialized.");
       return;
     }
     try {
@@ -261,7 +237,7 @@ public class BotController {
 
   private void sendCardWithButton(String spaceName, String threadName) {
     if (chatServiceClient == null) {
-      logger.error("ChatServiceClient is not initialized.");
+      logger.error("ChatServiceClient not initialized.");
       return;
     }
     try {
