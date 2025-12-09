@@ -39,11 +39,8 @@ public class BotController {
   private static final String CHAT_API_ENDPOINT = "chat.googleapis.com:443";
   private static final String CHAT_SCOPE = "https://www.googleapis.com/auth/chat.bot";
 
-  // Slash Command IDs from Google Cloud Console Configuration
   private static final long CMD_PUBSUBTEST = 1;
   private static final long CMD_CREATE_CARD = 2;
-
-  // Card Action Method Name
   private static final String ACTION_SEND_MESSAGE = "sendTextMessage";
 
   @PostConstruct
@@ -53,16 +50,13 @@ public class BotController {
           "Initializing ChatServiceClient with endpoint: {} and scope: {}",
           CHAT_API_ENDPOINT,
           CHAT_SCOPE);
-
       GoogleCredentials credentials =
           GoogleCredentials.getApplicationDefault().createScoped(ImmutableList.of(CHAT_SCOPE));
-
       ChatServiceSettings chatServiceSettings =
           ChatServiceSettings.newBuilder()
               .setEndpoint(CHAT_API_ENDPOINT)
               .setCredentialsProvider(FixedCredentialsProvider.create(credentials))
               .build();
-
       chatServiceClient = ChatServiceClient.create(chatServiceSettings);
       logger.info("ChatServiceClient initialized successfully.");
     } catch (Exception e) {
@@ -93,7 +87,6 @@ public class BotController {
         logger.warn("Invalid Pub/Sub request: missing 'message' field");
         return;
       }
-
       String data = messageNode.path("data").asText();
       if (data.isEmpty()) {
         logger.warn("Invalid Pub/Sub request: missing 'data' field");
@@ -102,23 +95,40 @@ public class BotController {
 
       String decodedData = new String(Base64.getDecoder().decode(data));
       logger.info("Received event raw: {}", decodedData);
-
       JsonNode event = objectMapper.readTree(decodedData);
-      String eventType = event.path("type").asText();
-      logger.info("Detected event type: {}", eventType);
+      logger.info("Parsed event JSON: {}", event.toString());
 
-      switch (eventType) {
-        case "ADDED_TO_SPACE":
-          handleAddedToSpace(event);
-          break;
-        case "MESSAGE":
-          handleMessageEvent(event);
-          break;
-        case "CARD_CLICKED":
-          handleCardClicked(event);
-          break;
-        default:
-          logger.warn("Unhandled event type: {}", eventType);
+      JsonNode chatNode = event.path("chat");
+      if (chatNode.isMissingNode()) {
+        logger.warn("Event is missing 'chat' field.");
+        return;
+      }
+
+      // Chaddon event dispatching based on payload type
+      if (chatNode.has("messagePayload")) {
+        logger.info("Detected messagePayload, treating as standard message.");
+        handleChatMessage(chatNode.path("messagePayload"));
+      } else if (chatNode.has("appCommandPayload")) {
+        logger.info("Detected appCommandPayload, treating as slash command.");
+        handleAppCommand(chatNode.path("appCommandPayload"));
+      } else if (chatNode.has("addedToSpacePayload")) {
+        logger.info("Detected addedToSpacePayload.");
+        handleAddedToSpace(chatNode.path("addedToSpacePayload"));
+      } else if (event.path("commonEventObject").path("invokedFunction").isTextual()) {
+        // Card clicks are identified by invokedFunction in commonEventObject
+        String function = event.path("commonEventObject").path("invokedFunction").asText();
+        logger.info("Detected CARD_CLICKED with function: {}", function);
+        handleCardClicked(event);
+      } else {
+        // Fallback for other event types from commonEventObject if needed
+        String hostApp = event.path("commonEventObject").path("hostApp").asText();
+        if ("CHAT".equals(hostApp)) {
+          // Try to get event type from commonEventObject, though it's not always standard
+          String commonEventType = event.path("commonEventObject").path("eventType").asText();
+          logger.warn("Unhandled Chat event structure. CommonEventType: '{}'", commonEventType);
+        } else {
+          logger.warn("Received event for non-Chat hostApp: {}", hostApp);
+        }
       }
 
     } catch (Exception e) {
@@ -127,67 +137,73 @@ public class BotController {
     logger.info("receiveMessage END");
   }
 
-  private void handleAddedToSpace(JsonNode event) {
+  private void handleAddedToSpace(JsonNode addedToSpacePayload) {
     logger.info("Handling ADDED_TO_SPACE event.");
-    JsonNode spaceNode = event.path("space");
-    String spaceName = spaceNode.path("name").asText();
+    String spaceName = addedToSpacePayload.path("space").path("name").asText();
     if (!spaceName.isEmpty()) {
-      reply(spaceName, null, "Thanks for adding me!");
+      reply(spaceName, null, "Thanks for adding me to this Chaddon!");
     } else {
-      logger.warn("Received ADDED_TO_SPACE but could not find space name.");
+      logger.warn("ADDED_TO_SPACE: Could not find space name.");
     }
   }
 
-  private void handleMessageEvent(JsonNode event) {
-    logger.info("handleMessageEvent START");
-    JsonNode messageNode = event.path("message");
-    JsonNode spaceNode = event.path("space");
-    String spaceName = spaceNode.path("name").asText();
+  private void handleAppCommand(JsonNode appCommandPayload) {
+    logger.info("handleAppCommand START");
+    JsonNode metadata = appCommandPayload.path("appCommandMetadata");
+    long commandId = metadata.path("appCommandId").asLong(0);
+    String spaceName = appCommandPayload.path("space").path("name").asText();
+    String threadName = appCommandPayload.path("message").path("thread").path("name").asText();
 
     if (spaceName.isEmpty()) {
-      logger.warn("Space name is missing or empty.");
+      logger.warn("APP_COMMAND: Space name missing.");
       return;
     }
 
+    logger.info("App command ID: {}", commandId);
+    switch ((int) commandId) {
+      case (int) CMD_PUBSUBTEST:
+        logger.info("Matched CMD_PUBSUBTEST");
+        reply(spaceName, threadName, "Chaddon slash command /pubsubtest invoked!");
+        break;
+      case (int) CMD_CREATE_CARD:
+        logger.info("Matched CMD_CREATE_CARD");
+        sendCardWithButton(spaceName, threadName);
+        break;
+      default:
+        logger.warn("Unhandled app command ID: {}", commandId);
+        reply(spaceName, threadName, "Unknown slash command.");
+    }
+    logger.info("handleAppCommand END");
+  }
+
+  private void handleChatMessage(JsonNode messagePayload) {
+    // Standard text messages from users
+    logger.info("handleChatMessage START");
+    JsonNode messageNode = messagePayload.path("message");
+    String spaceName = messagePayload.path("space").path("name").asText();
+    String threadName = messageNode.path("thread").path("name").asText();
     JsonNode senderNode = messageNode.path("sender");
+
     if ("BOT".equals(senderNode.path("type").asText())) {
       logger.info("Ignoring message from BOT sender.");
       return;
     }
 
-    String threadName = messageNode.path("thread").path("name").asText();
-
-    if (messageNode.has("slashCommand")) {
-      long commandId = messageNode.path("slashCommand").path("commandId").asLong();
-      logger.info("Slash command detected: {}", commandId);
-
-      switch ((int) commandId) {
-        case (int) CMD_PUBSUBTEST:
-          reply(spaceName, threadName, "You invoked the /pubsubtest slash command.");
-          break;
-        case (int) CMD_CREATE_CARD:
-          sendCardWithButton(spaceName, threadName);
-          break;
-        default:
-          reply(spaceName, threadName, "Unknown slash command.");
-          logger.warn("Unhandled slash command ID: {}", commandId);
-      }
-    } else {
-      // Regular message
-      String text = messageNode.path("text").asText();
-      String senderName = senderNode.path("displayName").asText();
-      reply(spaceName, threadName, "Hello " + senderName + ", you said: " + text);
-    }
-    logger.info("handleMessageEvent END");
+    String senderName = senderNode.path("displayName").asText();
+    String text = messageNode.path("text").asText();
+    reply(spaceName, threadName, "Hello " + senderName + ", you said: " + text);
+    logger.info("handleChatMessage END");
   }
 
   private void handleCardClicked(JsonNode event) {
-    String actionMethodName = event.path("action").path("actionMethodName").asText();
-    logger.info("Handling card click with action: {}", actionMethodName);
-    String spaceName = event.path("space").path("name").asText();
-    // The message and thread from the original card click event
-    JsonNode messageNode = event.path("message");
-    String threadName = messageNode.path("thread").path("name").asText();
+    logger.info("handleCardClicked START");
+    String actionMethodName = event.path("commonEventObject").path("invokedFunction").asText();
+    logger.info("Handling card click with function: {}", actionMethodName);
+
+    JsonNode chatNode = event.path("chat");
+    String spaceName = chatNode.path("space").path("name").asText();
+    // Card clicks don't repopulate the full original message, so thread info might be missing
+    // You might need to pass threadName via action parameters if multi-threading is critical
 
     if (spaceName.isEmpty()) {
       logger.warn("Space name missing in card click event.");
@@ -195,15 +211,20 @@ public class BotController {
     }
 
     if (ACTION_SEND_MESSAGE.equals(actionMethodName)) {
-      reply(spaceName, threadName, "You clicked the button!");
+      logger.info("Matched ACTION_SEND_MESSAGE");
+      // Replying without thread, as it's not readily available in card click event
+      reply(spaceName, null, "You clicked the button on the Chaddon card!");
     } else {
       logger.warn("Unhandled card action: {}", actionMethodName);
     }
+    logger.info("handleCardClicked END");
   }
+
+  // --- Helper Methods ---
 
   private void reply(String spaceName, String threadName, String text) {
     if (chatServiceClient == null) {
-      logger.error("ChatServiceClient is not initialized, cannot send reply.");
+      logger.error("ChatServiceClient is not initialized.");
       return;
     }
     try {
@@ -211,13 +232,11 @@ public class BotController {
       if (threadName != null && !threadName.isEmpty()) {
         messageBuilder.setThread(Thread.newBuilder().setName(threadName));
       }
-
       CreateMessageRequest request =
           CreateMessageRequest.newBuilder()
               .setParent(spaceName)
               .setMessage(messageBuilder.build())
               .build();
-
       logger.info("Attempting to send reply to {} (thread: {}): {}", spaceName, threadName, text);
       Message response = chatServiceClient.createMessage(request);
       logger.info("Sent reply to {}, response ID: {}", spaceName, response.getName());
@@ -228,7 +247,7 @@ public class BotController {
 
   private void sendCardWithButton(String spaceName, String threadName) {
     if (chatServiceClient == null) {
-      logger.error("ChatServiceClient is not initialized, cannot send card.");
+      logger.error("ChatServiceClient is not initialized.");
       return;
     }
     try {
@@ -239,31 +258,26 @@ public class BotController {
                   OnClick.newBuilder()
                       .setAction(Action.newBuilder().setFunction(ACTION_SEND_MESSAGE)))
               .build();
-
       Card card =
           Card.newBuilder()
-              .setHeader(CardHeader.newBuilder().setTitle("Interactive Card"))
+              .setHeader(CardHeader.newBuilder().setTitle("Chaddon Interactive Card"))
               .addSections(
                   Section.newBuilder()
                       .addWidgets(
                           Widget.newBuilder()
                               .setButtonList(ButtonList.newBuilder().addButtons(button))))
               .build();
-
       CardWithId cardWithId =
           CardWithId.newBuilder().setCardId("interactive-card-1").setCard(card).build();
-
       Message.Builder messageBuilder = Message.newBuilder().addCardsV2(cardWithId);
       if (threadName != null && !threadName.isEmpty()) {
         messageBuilder.setThread(Thread.newBuilder().setName(threadName));
       }
-
       CreateMessageRequest request =
           CreateMessageRequest.newBuilder()
               .setParent(spaceName)
               .setMessage(messageBuilder.build())
               .build();
-
       logger.info("Attempting to send card to {} (thread: {})", spaceName, threadName);
       chatServiceClient.createMessage(request);
       logger.info("Sent card with button to {}", spaceName);
