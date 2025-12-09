@@ -222,14 +222,8 @@ public class BotController {
 
       logger.info("Attempting to send reply to {} (thread: {}): {}", spaceName, threadName, text);
 
-      // Log request payload to stdout safely
-      logProto("Chat API Request Payload", request);
-
       Message response = chatServiceClient.createMessage(request);
       logger.info("Sent reply to {}, response ID: {}", spaceName, response.getName());
-
-      // Log response payload to stdout safely
-      logProto("Chat API Response Payload", response);
 
     } catch (Exception e) {
       logger.error("Failed to send reply to " + spaceName, e);
@@ -239,36 +233,5 @@ public class BotController {
   // Overload for ADDED_TO_SPACE (no thread)
   private void reply(String spaceName, String text) {
     reply(spaceName, null, text);
-  }
-
-  private void logProto(String label, com.google.protobuf.MessageOrBuilder proto) {
-    try {
-      if (proto instanceof CreateMessageRequest) {
-        CreateMessageRequest req = (CreateMessageRequest) proto;
-        String parent = req.getParent();
-        Message msg = req.getMessage();
-        System.out.println(
-            label + ": {parent=" + parent + ", message=" + messageToString(msg) + "}");
-      } else if (proto instanceof Message) {
-        System.out.println(label + ": " + messageToString((Message) proto));
-      } else {
-        System.out.println(label + ": (Unknown proto type: " + proto.getClass().getName() + ")");
-      }
-    } catch (Throwable e) {
-      System.out.println(label + ": (Failed to log payload manually: " + e + ")");
-    }
-  }
-
-  private String messageToString(Message msg) {
-    if (msg == null) return "null";
-    StringBuilder sb = new StringBuilder();
-    sb.append("{");
-    sb.append("name=").append(msg.getName());
-    sb.append(", text=").append(msg.getText());
-    if (msg.hasThread()) {
-      sb.append(", thread.name=").append(msg.getThread().getName());
-    }
-    sb.append("}");
-    return sb.toString();
   }
 }
