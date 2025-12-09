@@ -9,6 +9,7 @@ import com.google.chat.v1.ChatServiceSettings;
 import com.google.chat.v1.CreateMessageRequest;
 import com.google.chat.v1.Message;
 import com.google.common.collect.ImmutableList; // Import this
+import com.google.protobuf.util.JsonFormat; // Import this
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
@@ -220,12 +221,16 @@ public class BotController {
           CreateMessageRequest.newBuilder().setParent(spaceName).setMessage(message).build();
 
       logger.info("Attempting to send reply to {} (thread: {}): {}", spaceName, threadName, text);
-      // Log request payload to stdout
-      System.out.println("Chat API Request Payload: " + request);
+
+      // Log request payload to stdout safely
+      logProto("Chat API Request Payload", request);
+
       Message response = chatServiceClient.createMessage(request);
       logger.info("Sent reply to {}, response ID: {}", spaceName, response.getName());
-      // Log response payload to stdout
-      System.out.println("Chat API Response Payload: " + response);
+
+      // Log response payload to stdout safely
+      logProto("Chat API Response Payload", response);
+
     } catch (Exception e) {
       logger.error("Failed to send reply to " + spaceName, e);
     }
@@ -234,5 +239,14 @@ public class BotController {
   // Overload for ADDED_TO_SPACE (no thread)
   private void reply(String spaceName, String text) {
     reply(spaceName, null, text);
+  }
+
+  private void logProto(String label, com.google.protobuf.MessageOrBuilder proto) {
+    try {
+      String json = JsonFormat.printer().omittingInsignificantWhitespace().print(proto);
+      System.out.println(label + ": " + json);
+    } catch (Throwable e) {
+      System.out.println(label + ": (Failed to log payload: " + e + ")");
+    }
   }
 }
