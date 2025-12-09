@@ -196,14 +196,29 @@ public class BotController {
   }
 
   private void handleCardClicked(JsonNode event) {
-    logger.info("handleCardClicked START");
+    logger.info("handleCardClicked START - Full Event: {}", event.toString());
     String actionMethodName = event.path("commonEventObject").path("invokedFunction").asText();
     logger.info("Handling card click with function: {}", actionMethodName);
 
     JsonNode chatNode = event.path("chat");
+    // The space can also be under commonEventObject.hostAppMetadata.chat.space
     String spaceName = chatNode.path("space").path("name").asText();
-    // Card clicks don't repopulate the full original message, so thread info might be missing
-    // You might need to pass threadName via action parameters if multi-threading is critical
+    if (spaceName.isEmpty()) {
+      spaceName =
+          event
+              .path("commonEventObject")
+              .path("hostAppMetadata")
+              .path("chat")
+              .path("space")
+              .path("name")
+              .asText();
+      if (!spaceName.isEmpty()) logger.info("Found spaceName in commonEventObject");
+    }
+    if (spaceName.isEmpty()) {
+      // Fallback to top level event.space
+      spaceName = event.path("space").path("name").asText();
+      if (!spaceName.isEmpty()) logger.info("Found spaceName in event.space");
+    }
 
     if (spaceName.isEmpty()) {
       logger.warn("Space name missing in card click event.");
@@ -211,8 +226,7 @@ public class BotController {
     }
 
     if (ACTION_SEND_MESSAGE.equals(actionMethodName)) {
-      logger.info("Matched ACTION_SEND_MESSAGE");
-      // Replying without thread, as it's not readily available in card click event
+      logger.info("Matched ACTION_SEND_MESSAGE. Space: {}", spaceName);
       reply(spaceName, null, "You clicked the button on the Chaddon card!");
     } else {
       logger.warn("Unhandled card action: {}", actionMethodName);
