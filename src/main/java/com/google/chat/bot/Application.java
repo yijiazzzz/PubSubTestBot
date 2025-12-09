@@ -12,12 +12,15 @@ public class Application {
       if (port == null) {
         port = "8080";
       }
+      System.out.println("Attempting to start on port: " + port);
       System.setProperty("server.port", port);
       SpringApplication.run(Application.class, args);
+      System.out.println("Application started successfully.");
     } catch (Throwable t) {
       System.err.println("Application startup failed:");
       t.printStackTrace();
-      throw t;
+      // Ensure the process exits on failure, which might help Cloud Run detect the issue faster.
+      System.exit(1);
     }
   }
 }
