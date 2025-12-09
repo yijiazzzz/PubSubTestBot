@@ -8,9 +8,7 @@ import com.google.apps.card.v1.Action;
 import com.google.apps.card.v1.Button;
 import com.google.apps.card.v1.ButtonList;
 import com.google.apps.card.v1.Card;
-import com.google.apps.card.v1.CardHeader;
 import com.google.apps.card.v1.OnClick;
-import com.google.apps.card.v1.Section;
 import com.google.apps.card.v1.TextParagraph;
 import com.google.apps.card.v1.Widget;
 import com.google.chat.v1.CardWithId;
@@ -284,8 +282,8 @@ public class BotController {
 
       Card card =
           Card.newBuilder()
-              .setHeader(CardHeader.newBuilder().setTitle("Card with Button").build())
-              .addSections(Section.newBuilder().addWidgets(buttonWidget).build())
+              .setHeader(Card.CardHeader.newBuilder().setTitle("Card with Button").build())
+              .addSections(Card.Section.newBuilder().addWidgets(buttonWidget).build())
               .build();
 
       CardWithId cardWithId = CardWithId.newBuilder().setCardId("card-1").setCard(card).build();
