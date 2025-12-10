@@ -41,7 +41,7 @@ public class BotController {
 
   private static final long CMD_PUBSUBTEST = 1;
   private static final long CMD_CREATE_CARD = 2;
-  private static final String ACTION_CARD_CLICK = "handleChatAction";
+  private static final String ACTION_CARD_CLICK = "onCardClick";
 
   @PostConstruct
   public void init() {
@@ -205,7 +205,9 @@ public class BotController {
     }
 
     // Handle both the new action name and the old 'sendTextMessage' for backward compatibility
-    if (ACTION_CARD_CLICK.equals(actionMethodName) || "sendTextMessage".equals(actionMethodName)) {
+    if (ACTION_CARD_CLICK.equals(actionMethodName)
+        || "sendTextMessage".equals(actionMethodName)
+        || "handleChatAction".equals(actionMethodName)) {
       logger.info("Matched Action: {}. Space: {}", actionMethodName, spaceName);
       reply(spaceName, null, "Button clicked! (Action: " + actionMethodName + ")");
     } else {
@@ -253,7 +255,6 @@ public class BotController {
                           Action.newBuilder()
                               .setFunction(ACTION_CARD_CLICK)
                               .setLoadIndicator(Action.LoadIndicator.SPINNER)
-                              .setPersistValues(false)
                               .addParameters(
                                   Action.ActionParameter.newBuilder()
                                       .setKey("action_reason")
