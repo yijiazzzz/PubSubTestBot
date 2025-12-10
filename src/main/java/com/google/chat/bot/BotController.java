@@ -41,7 +41,7 @@ public class BotController {
 
   private static final long CMD_PUBSUBTEST = 1;
   private static final long CMD_CREATE_CARD = 2;
-  private static final String ACTION_CARD_CLICK = "onCardClick";
+  private static final String ACTION_CARD_CLICK = "handleChatAction";
 
   @PostConstruct
   public void init() {
@@ -74,8 +74,7 @@ public class BotController {
 
   @PostMapping("/")
   public void receiveMessage(@RequestBody String body) {
-    logger.info("receiveMessage START");
-    logger.info("Received body: {}", body);
+    logger.info("receiveMessage START - Raw Body: {}", body);
     if (chatServiceClient == null) {
       logger.error("Cannot process message, ChatServiceClient is not initialized.");
       return;
@@ -250,7 +249,12 @@ public class BotController {
                       .setAction(
                           Action.newBuilder()
                               .setFunction(ACTION_CARD_CLICK)
-                              .setLoadIndicator(Action.LoadIndicator.SPINNER)))
+                              .setLoadIndicator(Action.LoadIndicator.SPINNER)
+                              .addParameters(
+                                  Action.ActionParameter.newBuilder()
+                                      .setKey("original_action")
+                                      .setValue("onCardClick")
+                                      .build())))
               .build();
       Card card =
           Card.newBuilder()
