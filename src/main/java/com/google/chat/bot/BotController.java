@@ -201,7 +201,8 @@ public class BotController {
     // 1. Try to get Action Name
     if (commonEventObject.has("invokedFunction")) {
       actionMethodName = commonEventObject.path("invokedFunction").asText();
-    } else if (chatNode.has("buttonClickedPayload")) {
+    } else if (chatNode.has("buttonClickedPayload")
+        && chatNode.path("buttonClickedPayload").has("actionMethodName")) {
       actionMethodName = chatNode.path("buttonClickedPayload").path("actionMethodName").asText();
     }
     logger.info("DEBUG: Card click invokedFunction/actionMethodName: {}", actionMethodName);
@@ -209,6 +210,9 @@ public class BotController {
     // 2. Try to get Space Name
     if (chatNode.has("space")) {
       spaceName = chatNode.path("space").path("name").asText();
+    } else if (chatNode.has("buttonClickedPayload")
+        && chatNode.path("buttonClickedPayload").has("space")) {
+      spaceName = chatNode.path("buttonClickedPayload").path("space").path("name").asText();
     } else {
       // Try hostAppMetadata fallback
       spaceName =
@@ -227,15 +231,26 @@ public class BotController {
     logger.info("DEBUG: spaceName for card click reply: {}", spaceName);
 
     // 3. Process Action
-    if (ACTION_CARD_CLICK.equals(actionMethodName)) {
-      logger.info("DEBUG: actionMethodName MATCHES ACTION_CARD_CLICK");
-      // Log parameters if available
-      JsonNode parameters = commonEventObject.path("parameters");
-      if (parameters.isMissingNode() && chatNode.has("buttonClickedPayload")) {
-        // Try legacy parameters
-        parameters = chatNode.path("buttonClickedPayload").path("parameters");
-      }
+    boolean isActionMatch = ACTION_CARD_CLICK.equals(actionMethodName);
 
+    JsonNode parameters = commonEventObject.path("parameters");
+    if (parameters.isMissingNode() && chatNode.has("buttonClickedPayload")) {
+      // Try legacy parameters
+      parameters = chatNode.path("buttonClickedPayload").path("parameters");
+    }
+
+    // Fallback: check parameters if action name is missing
+    if (!isActionMatch && parameters != null && !parameters.isMissingNode()) {
+      if (parameters.has("action_key")
+          && "action_value".equals(parameters.path("action_key").asText())) {
+        logger.info("DEBUG: Action name missing but parameters match. Assuming ACTION_CARD_CLICK.");
+        isActionMatch = true;
+        actionMethodName = ACTION_CARD_CLICK;
+      }
+    }
+
+    if (isActionMatch) {
+      logger.info("DEBUG: actionMethodName MATCHES ACTION_CARD_CLICK");
       if (!parameters.isMissingNode()) {
         parameters
             .fields()
