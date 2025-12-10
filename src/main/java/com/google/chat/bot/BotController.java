@@ -94,28 +94,28 @@ public class BotController {
       }
 
       String decodedData = new String(Base64.getDecoder().decode(data));
-      logger.info("Received event raw: {}", decodedData);
+      logger.info("DEBUG: Decoded Pub/Sub Data: {}", decodedData); // *** CRUCIAL LOG ***
+
       JsonNode event = objectMapper.readTree(decodedData);
-      logger.info("Parsed event JSON: {}", event.toString());
+      // logger.info("Parsed event JSON: {}", event.toString()); // Keep for structure view
 
       JsonNode commonEventObject = event.path("commonEventObject");
       JsonNode chatNode = event.path("chat");
 
-      // GWAO Event Dispatching - Restored Original Logic
       if (commonEventObject.has("invokedFunction")) {
-        logger.info("Detected invokedFunction, routing to handleCardClicked");
+        logger.info("DEBUG: Detected commonEventObject.invokedFunction");
         handleCardClicked(event);
       } else if (chatNode.has("appCommandPayload")) {
-        logger.info("Detected appCommandPayload, treating as slash command.");
+        logger.info("DEBUG: Detected chat.appCommandPayload");
         handleAppCommand(chatNode.path("appCommandPayload"));
       } else if (chatNode.has("messagePayload")) {
-        logger.info("Detected messagePayload, treating as standard message.");
+        logger.info("DEBUG: Detected chat.messagePayload");
         handleChatMessage(chatNode.path("messagePayload"));
       } else if (chatNode.has("addedToSpacePayload")) {
-        logger.info("Detected addedToSpacePayload.");
+        logger.info("DEBUG: Detected chat.addedToSpacePayload");
         handleAddedToSpace(chatNode.path("addedToSpacePayload"));
       } else {
-        logger.warn("Unhandled Chat event structure: {}", event.toString());
+        logger.warn("DEBUG: Unhandled Chat event structure. Keys: {}", event.fieldNames());
       }
 
     } catch (IOException e) {
@@ -137,6 +137,7 @@ public class BotController {
   }
 
   private void handleAppCommand(JsonNode appCommandPayload) {
+    // ... (rest of the method as before)
     logger.info("handleAppCommand START");
     JsonNode metadata = appCommandPayload.path("appCommandMetadata");
     long commandId = metadata.path("appCommandId").asLong(0);
@@ -166,6 +167,7 @@ public class BotController {
   }
 
   private void handleChatMessage(JsonNode messagePayload) {
+    // ... (rest of the method as before)
     logger.info("handleChatMessage START");
     JsonNode messageNode = messagePayload.path("message");
     String spaceName = messagePayload.path("space").path("name").asText();
@@ -186,42 +188,41 @@ public class BotController {
   private void handleCardClicked(JsonNode event) {
     logger.info("handleCardClicked START - Full Event: {}", event.toString());
     JsonNode commonEventObject = event.path("commonEventObject");
-    String actionMethodName = commonEventObject.path("invokedFunction").asText();
-    logger.info("Handling card click with function: {}", actionMethodName);
+
+    if (commonEventObject.isMissingNode()) {
+      logger.error("DEBUG: commonEventObject is MISSING in card click event!");
+      return;
+    }
+
+    String actionMethodName = commonEventObject.path("invokedFunction").asText("MISSING_FUNCTION");
+    logger.info("DEBUG: Card click invokedFunction: {}", actionMethodName);
 
     String spaceName = event.path("chat").path("space").path("name").asText();
     if (spaceName.isEmpty()) {
-      logger.warn("Space name missing in chat.space, event: {}", event.toString());
+      logger.error("DEBUG: Space name MISSING in chat.space for card click.");
       return;
     }
-    // GWAO events don't typically put thread in the top level event for card clicks.
-    // The message context is usually part of the host app metadata or needs to be known.
-    // Replying without thread context will start a new thread.
+    logger.info("DEBUG: spaceName for card click reply: {}", spaceName);
 
     if (ACTION_CARD_CLICK.equals(actionMethodName)) {
+      logger.info("DEBUG: actionMethodName MATCHES ACTION_CARD_CLICK");
       // Log parameters from commonEventObject
       JsonNode parameters = commonEventObject.path("parameters");
-      parameters
-          .fields()
-          .forEachRemaining(
-              entry -> {
-                logger.info("Param: {} = {}", entry.getKey(), entry.getValue().asText());
-              });
-
-      // Log form inputs from commonEventObject
-      JsonNode formInputs = commonEventObject.path("formInputs");
-      if (!formInputs.isMissingNode()) {
-        formInputs
+      if (!parameters.isMissingNode()) {
+        parameters
             .fields()
             .forEachRemaining(
                 entry -> {
-                  logger.info("Form Input: {} = {}", entry.getKey(), entry.getValue().toString());
+                  logger.info("DEBUG: Param: {} = {}", entry.getKey(), entry.getValue().asText());
                 });
+      } else {
+        logger.info("DEBUG: No parameters found in commonEventObject.");
       }
 
       reply(spaceName, null, "Button clicked! (Action: " + actionMethodName + ")");
     } else {
-      logger.warn("Unhandled card action: {}", actionMethodName);
+      logger.warn(
+          "DEBUG: Unhandled card action: {}. Expected: {}", actionMethodName, ACTION_CARD_CLICK);
       reply(spaceName, null, "Unknown card action: " + actionMethodName);
     }
     logger.info("handleCardClicked END");
@@ -229,6 +230,7 @@ public class BotController {
 
   // --- Helper Methods ---
   private void reply(String spaceName, String threadName, String text) {
+    // ... (rest of the method as before)
     if (chatServiceClient == null) {
       logger.error("ChatServiceClient not initialized.");
       return;
@@ -252,6 +254,7 @@ public class BotController {
   }
 
   private void sendCardWithButton(String spaceName, String threadName) {
+    // ... (rest of the method as before)
     if (chatServiceClient == null) {
       logger.error("ChatServiceClient not initialized.");
       return;
@@ -262,10 +265,7 @@ public class BotController {
               .setText("Click Me")
               .setOnClick(
                   OnClick.newBuilder()
-                      .setAction(
-                          Action.newBuilder().setFunction(ACTION_CARD_CLICK)
-                          // .addParameters(Action.ActionParameter.newBuilder().setKey("itemId").setValue("123")) // Example parameter
-                          ))
+                      .setAction(Action.newBuilder().setFunction(ACTION_CARD_CLICK)))
               .build();
 
       Card card =
