@@ -106,6 +106,9 @@ public class BotController {
       if (commonEventObject.has("invokedFunction")) {
         logger.info("DEBUG: Detected commonEventObject.invokedFunction");
         handleCardClicked(event);
+      } else if (chatNode.has("buttonClickedPayload")) {
+        logger.info("DEBUG: Detected chat.buttonClickedPayload");
+        handleCardClicked(event);
       } else if (chatNode.has("appCommandPayload")) {
         logger.info("DEBUG: Detected chat.appCommandPayload");
         handleAppCommand(chatNode.path("appCommandPayload"));
@@ -189,26 +192,53 @@ public class BotController {
   private void handleCardClicked(JsonNode event) {
     logger.info("handleCardClicked START - Full Event: {}", event.toString());
     JsonNode commonEventObject = event.path("commonEventObject");
+    JsonNode chatNode = event.path("chat");
 
-    if (commonEventObject.isMissingNode()) {
-      logger.error("DEBUG: commonEventObject is MISSING in card click event!");
-      return;
+    String actionMethodName = "MISSING_FUNCTION";
+    String spaceName = "";
+
+    // 1. Try to get Action Name
+    if (commonEventObject.has("invokedFunction")) {
+      actionMethodName = commonEventObject.path("invokedFunction").asText();
+    } else if (chatNode.has("buttonClickedPayload")) {
+      actionMethodName = chatNode.path("buttonClickedPayload").path("actionMethodName").asText();
+    }
+    logger.info("DEBUG: Card click invokedFunction/actionMethodName: {}", actionMethodName);
+
+    // 2. Try to get Space Name
+    // GWAO style: commonEventObject -> hostAppMetadata -> chat -> space -> name
+    // Chat API style: chat -> space -> name OR chat -> buttonClickedPayload -> space -> name (rare)
+    // The 'event' object passed here seems to be the root JSON (parsed from data).
+    // In 'receiveMessage', 'chatNode' is event.path("chat").
+    if (chatNode.has("space")) {
+      spaceName = chatNode.path("space").path("name").asText();
+    } else {
+      // Try hostAppMetadata fallback
+      spaceName =
+          commonEventObject
+              .path("hostAppMetadata")
+              .path("chat")
+              .path("space")
+              .path("name")
+              .asText();
     }
 
-    String actionMethodName = commonEventObject.path("invokedFunction").asText("MISSING_FUNCTION");
-    logger.info("DEBUG: Card click invokedFunction: {}", actionMethodName);
-
-    String spaceName = event.path("chat").path("space").path("name").asText();
     if (spaceName.isEmpty()) {
-      logger.error("DEBUG: Space name MISSING in chat.space for card click.");
+      logger.error("DEBUG: Space name MISSING in card click event.");
       return;
     }
     logger.info("DEBUG: spaceName for card click reply: {}", spaceName);
 
+    // 3. Process Action
     if (ACTION_CARD_CLICK.equals(actionMethodName)) {
       logger.info("DEBUG: actionMethodName MATCHES ACTION_CARD_CLICK");
-      // Log parameters from commonEventObject
+      // Log parameters if available
       JsonNode parameters = commonEventObject.path("parameters");
+      if (parameters.isMissingNode() && chatNode.has("buttonClickedPayload")) {
+        // Try legacy parameters
+        parameters = chatNode.path("buttonClickedPayload").path("parameters");
+      }
+
       if (!parameters.isMissingNode()) {
         parameters
             .fields()
@@ -217,7 +247,7 @@ public class BotController {
                   logger.info("DEBUG: Param: {} = {}", entry.getKey(), entry.getValue().asText());
                 });
       } else {
-        logger.info("DEBUG: No parameters found in commonEventObject.");
+        logger.info("DEBUG: No parameters found.");
       }
 
       reply(spaceName, null, "Button clicked! (Action: " + actionMethodName + ")");
