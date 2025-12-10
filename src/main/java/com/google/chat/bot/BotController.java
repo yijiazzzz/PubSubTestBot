@@ -41,7 +41,7 @@ public class BotController {
 
   private static final long CMD_PUBSUBTEST = 1;
   private static final long CMD_CREATE_CARD = 2;
-  private static final String ACTION_CARD_CLICK = "onCardClick";
+  private static final String ACTION_CARD_CLICK = "action";
 
   @PostConstruct
   public void init() {
@@ -204,15 +204,9 @@ public class BotController {
       return;
     }
 
-    // Handle both the new action name and the old 'sendTextMessage' for backward compatibility
-    if (ACTION_CARD_CLICK.equals(actionMethodName)
-        || "sendTextMessage".equals(actionMethodName)
-        || "handleChatAction".equals(actionMethodName)) {
-      logger.info("Matched Action: {}. Space: {}", actionMethodName, spaceName);
-      reply(spaceName, null, "Button clicked! (Action: " + actionMethodName + ")");
-    } else {
-      logger.warn("Unhandled card action: {}", actionMethodName);
-    }
+    // Handle generic action
+    logger.info("Processing action: {}", actionMethodName);
+    reply(spaceName, null, "Button clicked! (Action: " + actionMethodName + ")");
     logger.info("handleCardClicked END");
   }
 
@@ -254,12 +248,7 @@ public class BotController {
                       .setAction(
                           Action.newBuilder()
                               .setFunction(ACTION_CARD_CLICK)
-                              .setLoadIndicator(Action.LoadIndicator.SPINNER)
-                              .addParameters(
-                                  Action.ActionParameter.newBuilder()
-                                      .setKey("action_reason")
-                                      .setValue("test_click")
-                                      .build())))
+                              .setPersistValues(false)))
               .build();
       Card card =
           Card.newBuilder()
