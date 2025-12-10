@@ -41,7 +41,7 @@ public class BotController {
 
   private static final long CMD_PUBSUBTEST = 1;
   private static final long CMD_CREATE_CARD = 2;
-  private static final String ACTION_CARD_CLICK = "sendTextMessage";
+  private static final String ACTION_CARD_CLICK = "onCardClick";
 
   @PostConstruct
   public void init() {
@@ -250,13 +250,8 @@ public class BotController {
                       .setAction(
                           Action.newBuilder()
                               .setFunction(ACTION_CARD_CLICK)
-                              .setLoadIndicator(Action.LoadIndicator.SPINNER)
-                              .setPersistValues(false)
-                              .addParameters(
-                                  Action.ActionParameter.newBuilder()
-                                      .setKey("p")
-                                      .setValue("v")
-                                      .build())))
+                              .setLoadIndicator(Action.LoadIndicator.NONE)
+                              .setPersistValues(false)))
               .build();
 
       Card card =
