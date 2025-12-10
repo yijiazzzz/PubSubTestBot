@@ -41,7 +41,7 @@ public class BotController {
 
   private static final long CMD_PUBSUBTEST = 1;
   private static final long CMD_CREATE_CARD = 2;
-  private static final String ACTION_SEND_MESSAGE = "sendTextMessage";
+  private static final String ACTION_CARD_CLICK = "onCardClick";
 
   @PostConstruct
   public void init() {
@@ -75,6 +75,7 @@ public class BotController {
   @PostMapping("/")
   public void receiveMessage(@RequestBody String body) {
     logger.info("receiveMessage START");
+    logger.info("Received body: {}", body);
     if (chatServiceClient == null) {
       logger.error("Cannot process message, ChatServiceClient is not initialized.");
       return;
@@ -200,8 +201,8 @@ public class BotController {
       return;
     }
 
-    if (ACTION_SEND_MESSAGE.equals(actionMethodName)) {
-      logger.info("Matched ACTION_SEND_MESSAGE. Space: {}", spaceName);
+    if (ACTION_CARD_CLICK.equals(actionMethodName)) {
+      logger.info("Matched ACTION_CARD_CLICK. Space: {}", spaceName);
       // Card click events from GWAO don't easily provide the original thread context
       // To reply in thread, you'd need to pass the thread name as a parameter in the Action
       reply(spaceName, null, "Button clicked on Chaddon card!");
@@ -246,7 +247,10 @@ public class BotController {
               .setText("Click Me")
               .setOnClick(
                   OnClick.newBuilder()
-                      .setAction(Action.newBuilder().setFunction(ACTION_SEND_MESSAGE)))
+                      .setAction(
+                          Action.newBuilder()
+                              .setFunction(ACTION_CARD_CLICK)
+                              .setLoadIndicator(Action.LoadIndicator.SPINNER)))
               .build();
       Card card =
           Card.newBuilder()
