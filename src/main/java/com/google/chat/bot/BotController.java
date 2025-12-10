@@ -2,6 +2,7 @@ package com.google.chat.bot;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature; // Required for pretty printing
 import com.google.api.gax.core.FixedCredentialsProvider;
 import com.google.apps.card.v1.Action;
 import com.google.apps.card.v1.Button;
@@ -19,6 +20,7 @@ import com.google.chat.v1.CreateMessageRequest;
 import com.google.chat.v1.Message;
 import com.google.chat.v1.Thread;
 import com.google.common.collect.ImmutableList;
+import com.google.protobuf.util.JsonFormat; // Import for converting Proto to JSON
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import java.io.IOException;
@@ -50,6 +52,9 @@ public class BotController {
           "Initializing ChatServiceClient with endpoint: {} and scope: {}",
           CHAT_API_ENDPOINT,
           CHAT_SCOPE);
+      // Enable pretty printing for JSON logs
+      objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
+
       GoogleCredentials credentials =
           GoogleCredentials.getApplicationDefault().createScoped(ImmutableList.of(CHAT_SCOPE));
       ChatServiceSettings chatServiceSettings =
@@ -64,13 +69,9 @@ public class BotController {
     }
   }
 
-  @PreDestroy
-  public void cleanup() {
-    if (chatServiceClient != null) {
-      logger.info("Closing ChatServiceClient.");
-      chatServiceClient.close();
-    }
-  }
+  // ... other methods remain the same ...
+  // receiveMessage, handleAddedToSpace, handleAppCommand, handleChatMessage, handleCardClicked,
+  // reply
 
   @PostMapping("/")
   public void receiveMessage(@RequestBody String body) {
@@ -254,7 +255,6 @@ public class BotController {
   }
 
   private void sendCardWithButton(String spaceName, String threadName) {
-    // ... (rest of the method as before)
     if (chatServiceClient == null) {
       logger.error("ChatServiceClient not initialized.");
       return;
@@ -284,12 +284,21 @@ public class BotController {
       if (threadName != null && !threadName.isEmpty()) {
         messageBuilder.setThread(Thread.newBuilder().setName(threadName));
       }
+      Message messageToSend = messageBuilder.build();
+
+      // *** ADDED LOGGING FOR OUTGOING CARD JSON ***
+      try {
+        // Use JsonFormat to convert the Message proto to JSON
+        String messageJson = JsonFormat.printer().print(messageToSend);
+        logger.info("DEBUG: Outgoing Message with Card JSON: {}", messageJson);
+      } catch (Exception e) {
+        logger.warn("DEBUG: Failed to serialize outgoing message to JSON for logging", e);
+        logger.info("DEBUG: Outgoing Message with Card (Proto): {}", messageToSend.toString());
+      }
+      // *** END ADDED LOGGING ***
 
       CreateMessageRequest request =
-          CreateMessageRequest.newBuilder()
-              .setParent(spaceName)
-              .setMessage(messageBuilder.build())
-              .build();
+          CreateMessageRequest.newBuilder().setParent(spaceName).setMessage(messageToSend).build();
       logger.info("Attempting to send card to {} (thread: {})", spaceName, threadName);
       chatServiceClient.createMessage(request);
       logger.info("Sent card with button to {}", spaceName);
