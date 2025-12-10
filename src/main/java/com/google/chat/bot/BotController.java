@@ -41,7 +41,7 @@ public class BotController {
 
   private static final long CMD_PUBSUBTEST = 1;
   private static final long CMD_CREATE_CARD = 2;
-  private static final String ACTION_CARD_CLICK = "action";
+  private static final String ACTION_CARD_CLICK = "sendTextMessage";
 
   @PostConstruct
   public void init() {
@@ -204,8 +204,10 @@ public class BotController {
       return;
     }
 
-    // Handle generic action
-    logger.info("Processing action: {}", actionMethodName);
+    // Check for our specific test parameter
+    String reason = commonEventObject.path("parameters").path("action_reason").asText();
+    logger.info("Action reason parameter: {}", reason);
+
     reply(spaceName, null, "Button clicked! (Action: " + actionMethodName + ")");
     logger.info("handleCardClicked END");
   }
@@ -248,8 +250,15 @@ public class BotController {
                       .setAction(
                           Action.newBuilder()
                               .setFunction(ACTION_CARD_CLICK)
-                              .setPersistValues(false)))
+                              .setLoadIndicator(Action.LoadIndicator.SPINNER)
+                              .setPersistValues(false)
+                              .addParameters(
+                                  Action.ActionParameter.newBuilder()
+                                      .setKey("p")
+                                      .setValue("v")
+                                      .build())))
               .build();
+
       Card card =
           Card.newBuilder()
               .setHeader(CardHeader.newBuilder().setTitle("Chaddon Interactive Card"))
