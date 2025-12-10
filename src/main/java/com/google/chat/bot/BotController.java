@@ -97,6 +97,10 @@ public class BotController {
       logger.info("Received event raw: {}", decodedData);
       JsonNode event = objectMapper.readTree(decodedData);
       logger.info("Parsed event JSON: {}", event.toString());
+      // Log event type to help debugging
+      if (event.path("chat").has("buttonClickedPayload")) {
+        logger.info("Detected buttonClickedPayload in chat event.");
+      }
 
       JsonNode commonEventObject = event.path("commonEventObject");
       JsonNode chatNode = event.path("chat");
@@ -200,11 +204,10 @@ public class BotController {
       return;
     }
 
-    if (ACTION_CARD_CLICK.equals(actionMethodName)) {
-      logger.info("Matched ACTION_CARD_CLICK. Space: {}", spaceName);
-      // Card click events from GWAO don't easily provide the original thread context
-      // To reply in thread, you'd need to pass the thread name as a parameter in the Action
-      reply(spaceName, null, "Button clicked on Chaddon card!");
+    // Handle both the new action name and the old 'sendTextMessage' for backward compatibility
+    if (ACTION_CARD_CLICK.equals(actionMethodName) || "sendTextMessage".equals(actionMethodName)) {
+      logger.info("Matched Action: {}. Space: {}", actionMethodName, spaceName);
+      reply(spaceName, null, "Button clicked! (Action: " + actionMethodName + ")");
     } else {
       logger.warn("Unhandled card action: {}", actionMethodName);
     }
@@ -250,10 +253,11 @@ public class BotController {
                           Action.newBuilder()
                               .setFunction(ACTION_CARD_CLICK)
                               .setLoadIndicator(Action.LoadIndicator.SPINNER)
+                              .setPersistValues(false)
                               .addParameters(
                                   Action.ActionParameter.newBuilder()
-                                      .setKey("original_action")
-                                      .setValue("onCardClick")
+                                      .setKey("action_reason")
+                                      .setValue("test_click")
                                       .build())))
               .build();
       Card card =
