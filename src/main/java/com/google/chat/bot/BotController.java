@@ -43,7 +43,8 @@ public class BotController {
 
   private static final long CMD_PUBSUBTEST = 1;
   private static final long CMD_CREATE_CARD = 2;
-  private static final String ACTION_CARD_CLICK = "onCardClick";
+  private static final String ACTION_CARD_CLICK =
+      "projects/pubsubchaddontestapp/topics/testpubsubtopic";
 
   @PostConstruct
   public void init() {
@@ -206,10 +207,6 @@ public class BotController {
     logger.info("DEBUG: Card click invokedFunction/actionMethodName: {}", actionMethodName);
 
     // 2. Try to get Space Name
-    // GWAO style: commonEventObject -> hostAppMetadata -> chat -> space -> name
-    // Chat API style: chat -> space -> name OR chat -> buttonClickedPayload -> space -> name (rare)
-    // The 'event' object passed here seems to be the root JSON (parsed from data).
-    // In 'receiveMessage', 'chatNode' is event.path("chat").
     if (chatNode.has("space")) {
       spaceName = chatNode.path("space").path("name").asText();
     } else {
