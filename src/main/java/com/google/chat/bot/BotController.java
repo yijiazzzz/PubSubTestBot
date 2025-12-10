@@ -265,7 +265,13 @@ public class BotController {
               .setText("Click Me")
               .setOnClick(
                   OnClick.newBuilder()
-                      .setAction(Action.newBuilder().setFunction(ACTION_CARD_CLICK)))
+                      .setAction(
+                          Action.newBuilder()
+                              .setFunction(ACTION_CARD_CLICK)
+                              .addParameters(
+                                  Action.ActionParameter.newBuilder()
+                                      .setKey("action_key")
+                                      .setValue("action_value"))))
               .build();
 
       Card card =
@@ -277,6 +283,7 @@ public class BotController {
                           Widget.newBuilder()
                               .setButtonList(ButtonList.newBuilder().addButtons(button))))
               .build();
+
       CardWithId cardWithId =
           CardWithId.newBuilder().setCardId("interactive-card-1").setCard(card).build();
 
