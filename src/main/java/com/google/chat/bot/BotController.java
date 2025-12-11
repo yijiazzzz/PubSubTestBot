@@ -248,8 +248,10 @@ public class BotController {
 
     // Fallback: check parameters if action name is missing
     if (!isActionMatch && parameters != null && !parameters.isMissingNode()) {
-      if (parameters.has("action_key")
-          && "action_value".equals(parameters.path("action_key").asText())) {
+      if ((parameters.has("action_key")
+              && "action_value".equals(parameters.path("action_key").asText()))
+          || (parameters.has("action_type")
+              && "update_message".equals(parameters.path("action_type").asText()))) {
         logger.info("DEBUG: Action name missing but parameters match. Assuming ACTION_CARD_CLICK.");
         isActionMatch = true;
         actionMethodName = ACTION_CARD_CLICK;
@@ -278,8 +280,7 @@ public class BotController {
         String messageName = "";
         if (chatNode.has("buttonClickedPayload")
             && chatNode.path("buttonClickedPayload").has("message")) {
-          messageName =
-              chatNode.path("buttonClickedPayload").path("message").path("name").asText();
+          messageName = chatNode.path("buttonClickedPayload").path("message").path("name").asText();
         }
         if (!messageName.isEmpty()) {
           updateMessage(messageName, "The message has been updated successfully!");
