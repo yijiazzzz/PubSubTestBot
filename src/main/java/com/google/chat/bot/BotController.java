@@ -50,6 +50,9 @@ public class BotController {
   private static final long CMD_STATIC_SUGGESTIONS = 4;
   private static final String ACTION_CARD_CLICK =
       "projects/pubsubchaddontestapp/topics/testpubsubtopic";
+  private static final String ACTION_TYPE_UPDATE_MESSAGE = "update_message";
+  private static final String ACTION_KEY_STATIC_SUGGESTIONS_SUBMIT = "static_suggestions_submit";
+  private static final String ACTION_KEY_GENERIC_CLICK = "action_value";
 
   @PostConstruct
   public void init() {
@@ -246,57 +249,33 @@ public class BotController {
     logger.info("DEBUG: spaceName for card click reply: {}", spaceName);
 
     // 3. Process Action
-    boolean isActionMatch = ACTION_CARD_CLICK.equals(actionMethodName);
-
     JsonNode parameters = commonEventObject.path("parameters");
     if (parameters.isMissingNode() && chatNode.has("buttonClickedPayload")) {
-      // Try legacy parameters
       parameters = chatNode.path("buttonClickedPayload").path("parameters");
     }
 
-    // Fallback: check parameters if action name is missing
-    if (!isActionMatch && parameters != null && !parameters.isMissingNode()) {
-      if ((parameters.has("action_key")
-              && "action_value".equals(parameters.path("action_key").asText()))
-          || (parameters.has("action_type")
-              && "update_message".equals(parameters.path("action_type").asText()))) {
-        logger.info("DEBUG: Action name missing but parameters match. Assuming ACTION_CARD_CLICK.");
-        isActionMatch = true;
-        actionMethodName = ACTION_CARD_CLICK;
-      }
-    }
+    boolean isUpdateMessage =
+        ACTION_TYPE_UPDATE_MESSAGE.equals(parameters.path("action_type").asText());
+    boolean isStaticSuggestionsSubmit =
+        ACTION_KEY_STATIC_SUGGESTIONS_SUBMIT.equals(parameters.path("action_key").asText());
+    boolean isGenericClick =
+        ACTION_KEY_GENERIC_CLICK.equals(parameters.path("action_key").asText());
+
+    // Check if it matches our expected function OR if we have valid parameters (fallback)
+    boolean isActionMatch =
+        ACTION_CARD_CLICK.equals(actionMethodName)
+            || isUpdateMessage
+            || isStaticSuggestionsSubmit
+            || isGenericClick;
 
     if (isActionMatch) {
-      logger.info("DEBUG: actionMethodName MATCHES ACTION_CARD_CLICK");
-      boolean isUpdateMessage = false;
-      if (!parameters.isMissingNode()) {
-        parameters
-            .fields()
-            .forEachRemaining(
-                entry -> {
-                  logger.info("DEBUG: Param: {} = {}", entry.getKey(), entry.getValue().asText());
-                });
-        if (parameters.has("action_type")
-            && "update_message".equals(parameters.path("action_type").asText())) {
-          isUpdateMessage = true;
-        }
-      } else {
-        logger.info("DEBUG: No parameters found.");
-      }
-
+      logger.info("DEBUG: Handling valid card action.");
       if (isUpdateMessage) {
-        String messageName = "";
-        if (chatNode.has("buttonClickedPayload")
-            && chatNode.path("buttonClickedPayload").has("message")) {
-          messageName = chatNode.path("buttonClickedPayload").path("message").path("name").asText();
-        }
-        if (!messageName.isEmpty()) {
-          updateMessage(messageName, "The message has been updated successfully!");
-        } else {
-          logger.error("Could not find message name to update.");
-          reply(spaceName, null, "Error: Could not find message to update.");
-        }
+        processUpdateMessageAction(chatNode, spaceName);
+      } else if (isStaticSuggestionsSubmit) {
+        processStaticSuggestionsSubmit(commonEventObject, spaceName);
       } else {
+        // Default handling for other button clicks (e.g., generic click)
         reply(spaceName, null, "Button clicked! (Action: " + actionMethodName + ")");
       }
     } else {
@@ -305,6 +284,34 @@ public class BotController {
       reply(spaceName, null, "Unknown card action: " + actionMethodName);
     }
     logger.info("handleCardClicked END");
+  }
+
+  private void processUpdateMessageAction(JsonNode chatNode, String spaceName) {
+    String messageName = "";
+    if (chatNode.has("buttonClickedPayload")
+        && chatNode.path("buttonClickedPayload").has("message")) {
+      messageName = chatNode.path("buttonClickedPayload").path("message").path("name").asText();
+    }
+    if (!messageName.isEmpty()) {
+      updateMessage(messageName, "The message has been updated successfully!");
+    } else {
+      logger.error("Could not find message name to update.");
+      reply(spaceName, null, "Error: Could not find message to update.");
+    }
+  }
+
+  private void processStaticSuggestionsSubmit(JsonNode commonEventObject, String spaceName) {
+    logger.info("Handling static suggestions submit.");
+    JsonNode formInputs = commonEventObject.path("formInputs");
+    String selectedOption = "None";
+    if (formInputs.has("static_selection_input")) {
+      JsonNode inputNode =
+          formInputs.path("static_selection_input").path("stringInputs").path("value");
+      if (inputNode.isArray() && inputNode.size() > 0) {
+        selectedOption = inputNode.get(0).asText();
+      }
+    }
+    reply(spaceName, null, "You selected: " + selectedOption);
   }
 
   // --- Helper Methods ---
