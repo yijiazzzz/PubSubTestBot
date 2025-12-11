@@ -160,6 +160,8 @@ public class BotController {
     }
 
     logger.info("App command ID: {}", commandId);
+    // Log the entire metadata for debugging
+    logger.info("App command metadata: {}", metadata.toString());
     switch ((int) commandId) {
       case (int) CMD_PUBSUBTEST:
         logger.info("Matched CMD_PUBSUBTEST");
@@ -465,11 +467,13 @@ public class BotController {
       return;
     }
     try {
+      // Create SelectionInput
       SelectionInput selectionInput =
           SelectionInput.newBuilder()
               .setName("static_selection_input")
               .setLabel("Static Suggestions Input")
-              .setType(SelectionInput.SelectionType.MULTI_SELECT)
+              .setType(
+                  SelectionInput.SelectionType.MULTI_SELECT) // Stick to MULTI_SELECT as requested
               .addItems(
                   SelectionInput.SelectionItem.newBuilder()
                       .setText("Option 1")
@@ -484,12 +488,30 @@ public class BotController {
                       .setValue("option_3"))
               .build();
 
+      // Create a Button to submit the form (or just act as an action trigger)
+      Button submitButton =
+          Button.newBuilder()
+              .setText("Submit")
+              .setOnClick(
+                  OnClick.newBuilder()
+                      .setAction(
+                          Action.newBuilder()
+                              .setFunction(ACTION_CARD_CLICK)
+                              .addParameters(
+                                  Action.ActionParameter.newBuilder()
+                                      .setKey("action_key")
+                                      .setValue("static_suggestions_submit"))))
+              .build();
+
       Card card =
           Card.newBuilder()
               .setHeader(CardHeader.newBuilder().setTitle("Static Suggestions Card"))
               .addSections(
                   Section.newBuilder()
-                      .addWidgets(Widget.newBuilder().setSelectionInput(selectionInput)))
+                      .addWidgets(Widget.newBuilder().setSelectionInput(selectionInput))
+                      .addWidgets(
+                          Widget.newBuilder()
+                              .setButtonList(ButtonList.newBuilder().addButtons(submitButton))))
               .build();
 
       CardWithId cardWithId =
