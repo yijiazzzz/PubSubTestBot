@@ -11,6 +11,7 @@ import com.google.apps.card.v1.Card;
 import com.google.apps.card.v1.Card.CardHeader;
 import com.google.apps.card.v1.Card.Section;
 import com.google.apps.card.v1.OnClick;
+import com.google.apps.card.v1.SelectionInput;
 import com.google.apps.card.v1.Widget;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.chat.v1.CardWithId;
@@ -46,6 +47,7 @@ public class BotController {
   private static final long CMD_PUBSUBTEST = 1;
   private static final long CMD_CREATE_CARD = 2;
   private static final long CMD_UPDATE_MESSAGE_CARD = 3;
+  private static final long CMD_STATIC_SUGGESTIONS = 4;
   private static final String ACTION_CARD_CLICK =
       "projects/pubsubchaddontestapp/topics/testpubsubtopic";
 
@@ -170,6 +172,10 @@ public class BotController {
       case (int) CMD_UPDATE_MESSAGE_CARD:
         logger.info("Matched CMD_UPDATE_MESSAGE_CARD");
         sendUpdateCard(spaceName, threadName);
+        break;
+      case (int) CMD_STATIC_SUGGESTIONS:
+        logger.info("Matched CMD_STATIC_SUGGESTIONS");
+        sendStaticSuggestionsCard(spaceName, threadName);
         break;
       default:
         logger.warn("Unhandled app command ID: {}", commandId);
@@ -450,6 +456,59 @@ public class BotController {
       logger.info("Sent card with button to {}", spaceName);
     } catch (Exception e) {
       logger.error("Failed to send card to " + spaceName, e);
+    }
+  }
+
+  private void sendStaticSuggestionsCard(String spaceName, String threadName) {
+    if (chatServiceClient == null) {
+      logger.error("ChatServiceClient not initialized.");
+      return;
+    }
+    try {
+      SelectionInput selectionInput =
+          SelectionInput.newBuilder()
+              .setName("static_selection_input")
+              .setLabel("Static Suggestions Input")
+              .setType(SelectionInput.SelectionType.MULTI_SELECT)
+              .addItems(
+                  SelectionInput.SelectionItem.newBuilder()
+                      .setText("Option 1")
+                      .setValue("option_1"))
+              .addItems(
+                  SelectionInput.SelectionItem.newBuilder()
+                      .setText("Option 2")
+                      .setValue("option_2"))
+              .addItems(
+                  SelectionInput.SelectionItem.newBuilder()
+                      .setText("Option 3")
+                      .setValue("option_3"))
+              .build();
+
+      Card card =
+          Card.newBuilder()
+              .setHeader(CardHeader.newBuilder().setTitle("Static Suggestions Card"))
+              .addSections(
+                  Section.newBuilder()
+                      .addWidgets(Widget.newBuilder().setSelectionInput(selectionInput)))
+              .build();
+
+      CardWithId cardWithId =
+          CardWithId.newBuilder().setCardId("static-suggestions-card").setCard(card).build();
+
+      Message.Builder messageBuilder = Message.newBuilder().addCardsV2(cardWithId);
+      if (threadName != null && !threadName.isEmpty()) {
+        messageBuilder.setThread(Thread.newBuilder().setName(threadName));
+      }
+      Message messageToSend = messageBuilder.build();
+
+      CreateMessageRequest request =
+          CreateMessageRequest.newBuilder().setParent(spaceName).setMessage(messageToSend).build();
+      logger.info(
+          "Attempting to send static suggestions card to {} (thread: {})", spaceName, threadName);
+      chatServiceClient.createMessage(request);
+      logger.info("Sent static suggestions card to {}", spaceName);
+    } catch (Exception e) {
+      logger.error("Failed to send static suggestions card to " + spaceName, e);
     }
   }
 }
