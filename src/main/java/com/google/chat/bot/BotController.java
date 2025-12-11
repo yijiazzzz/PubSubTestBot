@@ -53,6 +53,8 @@ public class BotController {
       "projects/pubsubchaddontestapp/topics/testpubsubtopic";
   private static final String ACTION_TYPE_UPDATE_MESSAGE = "update_message";
   private static final String ACTION_KEY_STATIC_SUGGESTIONS_SUBMIT = "static_suggestions_submit";
+  private static final String ACTION_KEY_PLATFORM_SUGGESTIONS_SUBMIT =
+      "platform_suggestions_submit";
   private static final String ACTION_KEY_GENERIC_CLICK = "action_value";
 
   @PostConstruct
@@ -263,6 +265,8 @@ public class BotController {
         ACTION_TYPE_UPDATE_MESSAGE.equals(parameters.path("action_type").asText());
     boolean isStaticSuggestionsSubmit =
         ACTION_KEY_STATIC_SUGGESTIONS_SUBMIT.equals(parameters.path("action_key").asText());
+    boolean isPlatformSuggestionsSubmit =
+        ACTION_KEY_PLATFORM_SUGGESTIONS_SUBMIT.equals(parameters.path("action_key").asText());
     boolean isGenericClick =
         ACTION_KEY_GENERIC_CLICK.equals(parameters.path("action_key").asText());
 
@@ -271,6 +275,7 @@ public class BotController {
         ACTION_CARD_CLICK.equals(actionMethodName)
             || isUpdateMessage
             || isStaticSuggestionsSubmit
+            || isPlatformSuggestionsSubmit
             || isGenericClick;
 
     if (isActionMatch) {
@@ -279,6 +284,8 @@ public class BotController {
         processUpdateMessageAction(chatNode, spaceName);
       } else if (isStaticSuggestionsSubmit) {
         processStaticSuggestionsSubmit(commonEventObject, spaceName);
+      } else if (isPlatformSuggestionsSubmit) {
+        processPlatformSuggestionsSubmit(commonEventObject, spaceName);
       } else {
         // Default handling for other button clicks (e.g., generic click)
         reply(spaceName, null, "Button clicked! (Action: " + actionMethodName + ")");
@@ -326,6 +333,29 @@ public class BotController {
       selectedOptions.append("None");
     }
     reply(spaceName, null, "You selected: " + selectedOptions.toString());
+  }
+
+  private void processPlatformSuggestionsSubmit(JsonNode commonEventObject, String spaceName) {
+    logger.info("Handling platform suggestions submit.");
+    JsonNode formInputs = commonEventObject.path("formInputs");
+    StringBuilder selectedUsers = new StringBuilder();
+    if (formInputs.has("platform_selection_input")) {
+      JsonNode inputNode =
+          formInputs.path("platform_selection_input").path("stringInputs").path("value");
+      if (inputNode.isArray() && inputNode.size() > 0) {
+        for (JsonNode node : inputNode) {
+          if (selectedUsers.length() > 0) {
+            selectedUsers.append(", ");
+          }
+          selectedUsers.append(node.asText());
+        }
+      } else {
+        selectedUsers.append("None");
+      }
+    } else {
+      selectedUsers.append("None");
+    }
+    reply(spaceName, null, "You selected users: " + selectedUsers.toString());
   }
 
   // --- Helper Methods ---
@@ -573,12 +603,30 @@ public class BotController {
                       .setCommonDataSource(SelectionInput.PlatformDataSource.CommonDataSource.USER))
               .build();
 
+      // Create a Button to submit the form
+      Button submitButton =
+          Button.newBuilder()
+              .setText("Submit")
+              .setOnClick(
+                  OnClick.newBuilder()
+                      .setAction(
+                          Action.newBuilder()
+                              .setFunction(ACTION_CARD_CLICK)
+                              .addParameters(
+                                  Action.ActionParameter.newBuilder()
+                                      .setKey("action_key")
+                                      .setValue("platform_suggestions_submit"))))
+              .build();
+
       Card card =
           Card.newBuilder()
               .setHeader(CardHeader.newBuilder().setTitle("Platform Suggestions Card"))
               .addSections(
                   Section.newBuilder()
-                      .addWidgets(Widget.newBuilder().setSelectionInput(selectionInput)))
+                      .addWidgets(Widget.newBuilder().setSelectionInput(selectionInput))
+                      .addWidgets(
+                          Widget.newBuilder()
+                              .setButtonList(ButtonList.newBuilder().addButtons(submitButton))))
               .build();
 
       CardWithId cardWithId =
