@@ -303,15 +303,24 @@ public class BotController {
   private void processStaticSuggestionsSubmit(JsonNode commonEventObject, String spaceName) {
     logger.info("Handling static suggestions submit.");
     JsonNode formInputs = commonEventObject.path("formInputs");
-    String selectedOption = "None";
+    StringBuilder selectedOptions = new StringBuilder();
     if (formInputs.has("static_selection_input")) {
       JsonNode inputNode =
           formInputs.path("static_selection_input").path("stringInputs").path("value");
       if (inputNode.isArray() && inputNode.size() > 0) {
-        selectedOption = inputNode.get(0).asText();
+        for (JsonNode node : inputNode) {
+          if (selectedOptions.length() > 0) {
+            selectedOptions.append(", ");
+          }
+          selectedOptions.append(node.asText());
+        }
+      } else {
+        selectedOptions.append("None");
       }
+    } else {
+      selectedOptions.append("None");
     }
-    reply(spaceName, null, "You selected: " + selectedOption);
+    reply(spaceName, null, "You selected: " + selectedOptions.toString());
   }
 
   // --- Helper Methods ---
