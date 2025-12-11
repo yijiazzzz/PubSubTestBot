@@ -8,6 +8,7 @@ import com.google.apps.card.v1.Action;
 import com.google.apps.card.v1.Button;
 import com.google.apps.card.v1.ButtonList;
 import com.google.apps.card.v1.Card;
+import com.google.apps.card.v1.DecoratedText;
 import com.google.apps.card.v1.Card.CardHeader;
 import com.google.apps.card.v1.Card.Section;
 import com.google.apps.card.v1.OnClick;
@@ -49,12 +50,14 @@ public class BotController {
   private static final long CMD_UPDATE_MESSAGE_CARD = 3;
   private static final long CMD_STATIC_SUGGESTIONS = 4;
   private static final long CMD_PLATFORM_SUGGESTIONS = 5;
+  private static final long CMD_ACCESSORY_WIDGET = 6;
   private static final String ACTION_CARD_CLICK =
       "projects/pubsubchaddontestapp/topics/testpubsubtopic";
   private static final String ACTION_TYPE_UPDATE_MESSAGE = "update_message";
   private static final String ACTION_KEY_STATIC_SUGGESTIONS_SUBMIT = "static_suggestions_submit";
   private static final String ACTION_KEY_PLATFORM_SUGGESTIONS_SUBMIT =
       "platform_suggestions_submit";
+  private static final String ACTION_KEY_ACCESSORY_WIDGET_CLICK = "accessory_widget_click";
   private static final String ACTION_KEY_GENERIC_CLICK = "action_value";
 
   @PostConstruct
@@ -189,6 +192,10 @@ public class BotController {
         logger.info("Matched CMD_PLATFORM_SUGGESTIONS");
         sendPlatformSuggestionsCard(spaceName, threadName);
         break;
+      case (int) CMD_ACCESSORY_WIDGET:
+        logger.info("Matched CMD_ACCESSORY_WIDGET");
+        sendAccessoryWidgetCard(spaceName, threadName);
+        break;
       default:
         logger.warn("Unhandled app command ID: {}", commandId);
         reply(spaceName, threadName, "Unknown slash command.");
@@ -267,6 +274,8 @@ public class BotController {
         ACTION_KEY_STATIC_SUGGESTIONS_SUBMIT.equals(parameters.path("action_key").asText());
     boolean isPlatformSuggestionsSubmit =
         ACTION_KEY_PLATFORM_SUGGESTIONS_SUBMIT.equals(parameters.path("action_key").asText());
+    boolean isAccessoryWidgetClick =
+        ACTION_KEY_ACCESSORY_WIDGET_CLICK.equals(parameters.path("action_key").asText());
     boolean isGenericClick =
         ACTION_KEY_GENERIC_CLICK.equals(parameters.path("action_key").asText());
 
@@ -276,6 +285,7 @@ public class BotController {
             || isUpdateMessage
             || isStaticSuggestionsSubmit
             || isPlatformSuggestionsSubmit
+            || isAccessoryWidgetClick
             || isGenericClick;
 
     if (isActionMatch) {
@@ -286,6 +296,8 @@ public class BotController {
         processStaticSuggestionsSubmit(commonEventObject, spaceName);
       } else if (isPlatformSuggestionsSubmit) {
         processPlatformSuggestionsSubmit(commonEventObject, spaceName);
+      } else if (isAccessoryWidgetClick) {
+        reply(spaceName, null, "Accessory widget button clicked!");
       } else {
         // Default handling for other button clicks (e.g., generic click)
         reply(spaceName, null, "Button clicked! (Action: " + actionMethodName + ")");
@@ -646,6 +658,60 @@ public class BotController {
       logger.info("Sent platform suggestions card to {}", spaceName);
     } catch (Exception e) {
       logger.error("Failed to send platform suggestions card to " + spaceName, e);
+    }
+  }
+
+  private void sendAccessoryWidgetCard(String spaceName, String threadName) {
+    if (chatServiceClient == null) {
+      logger.error("ChatServiceClient not initialized.");
+      return;
+    }
+    try {
+      Button button =
+          Button.newBuilder()
+              .setText("Accessory Button")
+              .setOnClick(
+                  OnClick.newBuilder()
+                      .setAction(
+                          Action.newBuilder()
+                              .setFunction(ACTION_CARD_CLICK)
+                              .addParameters(
+                                  Action.ActionParameter.newBuilder()
+                                      .setKey("action_key")
+                                      .setValue(ACTION_KEY_ACCESSORY_WIDGET_CLICK))))
+              .build();
+
+      DecoratedText decoratedText =
+          DecoratedText.newBuilder()
+              .setText("This is a DecoratedText widget with an accessory button.")
+              .setButton(button)
+              .build();
+
+      Card card =
+          Card.newBuilder()
+              .setHeader(CardHeader.newBuilder().setTitle("Accessory Widget Card"))
+              .addSections(
+                  Section.newBuilder()
+                      .addWidgets(Widget.newBuilder().setDecoratedText(decoratedText)))
+              .build();
+
+      CardWithId cardWithId =
+          CardWithId.newBuilder().setCardId("accessory-widget-card").setCard(card).build();
+
+      Message.Builder messageBuilder = Message.newBuilder().addCardsV2(cardWithId);
+      if (threadName != null && !threadName.isEmpty()) {
+        messageBuilder.setThread(Thread.newBuilder().setName(threadName));
+      }
+      Message messageToSend = messageBuilder.build();
+
+      CreateMessageRequest request =
+          CreateMessageRequest.newBuilder().setParent(spaceName).setMessage(messageToSend).build();
+      logger.info(
+          "Attempting to send accessory widget card to {} (thread: {})", spaceName, threadName);
+      chatServiceClient.createMessage(request);
+      logger.info("Sent accessory widget card to {}", spaceName);
+    } catch (Exception e) {
+      logger.error("Failed to send accessory widget card to " + spaceName, e);
     }
   }
 }
