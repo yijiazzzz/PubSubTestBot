@@ -19,7 +19,9 @@ import com.google.chat.v1.ChatServiceSettings;
 import com.google.chat.v1.CreateMessageRequest;
 import com.google.chat.v1.Message;
 import com.google.chat.v1.Thread;
+import com.google.chat.v1.UpdateMessageRequest;
 import com.google.common.collect.ImmutableList;
+import com.google.protobuf.FieldMask;
 import com.google.protobuf.util.JsonFormat; // Import for converting Proto to JSON
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -43,6 +45,7 @@ public class BotController {
 
   private static final long CMD_PUBSUBTEST = 1;
   private static final long CMD_CREATE_CARD = 2;
+  private static final long CMD_UPDATE_MESSAGE_CARD = 3;
   private static final String ACTION_CARD_CLICK =
       "projects/pubsubchaddontestapp/topics/testpubsubtopic";
 
@@ -164,6 +167,10 @@ public class BotController {
         logger.info("Matched CMD_CREATE_CARD");
         sendCardWithButton(spaceName, threadName);
         break;
+      case (int) CMD_UPDATE_MESSAGE_CARD:
+        logger.info("Matched CMD_UPDATE_MESSAGE_CARD");
+        sendUpdateCard(spaceName, threadName);
+        break;
       default:
         logger.warn("Unhandled app command ID: {}", commandId);
         reply(spaceName, threadName, "Unknown slash command.");
@@ -251,6 +258,7 @@ public class BotController {
 
     if (isActionMatch) {
       logger.info("DEBUG: actionMethodName MATCHES ACTION_CARD_CLICK");
+      boolean isUpdateMessage = false;
       if (!parameters.isMissingNode()) {
         parameters
             .fields()
@@ -258,11 +266,30 @@ public class BotController {
                 entry -> {
                   logger.info("DEBUG: Param: {} = {}", entry.getKey(), entry.getValue().asText());
                 });
+        if (parameters.has("action_type")
+            && "update_message".equals(parameters.path("action_type").asText())) {
+          isUpdateMessage = true;
+        }
       } else {
         logger.info("DEBUG: No parameters found.");
       }
 
-      reply(spaceName, null, "Button clicked! (Action: " + actionMethodName + ")");
+      if (isUpdateMessage) {
+        String messageName = "";
+        if (chatNode.has("buttonClickedPayload")
+            && chatNode.path("buttonClickedPayload").has("message")) {
+          messageName =
+              chatNode.path("buttonClickedPayload").path("message").path("name").asText();
+        }
+        if (!messageName.isEmpty()) {
+          updateMessage(messageName, "The message has been updated successfully!");
+        } else {
+          logger.error("Could not find message name to update.");
+          reply(spaceName, null, "Error: Could not find message to update.");
+        }
+      } else {
+        reply(spaceName, null, "Button clicked! (Action: " + actionMethodName + ")");
+      }
     } else {
       logger.warn(
           "DEBUG: Unhandled card action: {}. Expected: {}", actionMethodName, ACTION_CARD_CLICK);
@@ -272,6 +299,75 @@ public class BotController {
   }
 
   // --- Helper Methods ---
+  private void updateMessage(String messageName, String text) {
+    if (chatServiceClient == null) {
+      logger.error("ChatServiceClient not initialized.");
+      return;
+    }
+    try {
+      Message message = Message.newBuilder().setName(messageName).setText(text).build();
+      UpdateMessageRequest request =
+          UpdateMessageRequest.newBuilder()
+              .setMessage(message)
+              .setUpdateMask(FieldMask.newBuilder().addPaths("text").addPaths("cards_v2").build())
+              .build();
+      logger.info("Attempting to update message: {}", messageName);
+      chatServiceClient.updateMessage(request);
+      logger.info("Updated message: {}", messageName);
+    } catch (Exception e) {
+      logger.error("Failed to update message " + messageName, e);
+    }
+  }
+
+  private void sendUpdateCard(String spaceName, String threadName) {
+    if (chatServiceClient == null) {
+      logger.error("ChatServiceClient not initialized.");
+      return;
+    }
+    try {
+      Button button =
+          Button.newBuilder()
+              .setText("Click to Update")
+              .setOnClick(
+                  OnClick.newBuilder()
+                      .setAction(
+                          Action.newBuilder()
+                              .setFunction(ACTION_CARD_CLICK)
+                              .addParameters(
+                                  Action.ActionParameter.newBuilder()
+                                      .setKey("action_type")
+                                      .setValue("update_message"))))
+              .build();
+
+      Card card =
+          Card.newBuilder()
+              .setHeader(CardHeader.newBuilder().setTitle("Update Message Card"))
+              .addSections(
+                  Section.newBuilder()
+                      .addWidgets(
+                          Widget.newBuilder()
+                              .setButtonList(ButtonList.newBuilder().addButtons(button))))
+              .build();
+
+      CardWithId cardWithId =
+          CardWithId.newBuilder().setCardId("update-card-1").setCard(card).build();
+
+      Message.Builder messageBuilder = Message.newBuilder().addCardsV2(cardWithId);
+      if (threadName != null && !threadName.isEmpty()) {
+        messageBuilder.setThread(Thread.newBuilder().setName(threadName));
+      }
+      Message messageToSend = messageBuilder.build();
+
+      CreateMessageRequest request =
+          CreateMessageRequest.newBuilder().setParent(spaceName).setMessage(messageToSend).build();
+      logger.info("Attempting to send update card to {} (thread: {})", spaceName, threadName);
+      chatServiceClient.createMessage(request);
+      logger.info("Sent update card to {}", spaceName);
+    } catch (Exception e) {
+      logger.error("Failed to send update card to " + spaceName, e);
+    }
+  }
+
   private void reply(String spaceName, String threadName, String text) {
     // ... (rest of the method as before)
     if (chatServiceClient == null) {
