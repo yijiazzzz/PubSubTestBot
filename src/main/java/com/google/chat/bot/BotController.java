@@ -48,6 +48,7 @@ public class BotController {
   private static final long CMD_CREATE_CARD = 2;
   private static final long CMD_UPDATE_MESSAGE_CARD = 3;
   private static final long CMD_STATIC_SUGGESTIONS = 4;
+  private static final long CMD_PLATFORM_SUGGESTIONS = 5;
   private static final String ACTION_CARD_CLICK =
       "projects/pubsubchaddontestapp/topics/testpubsubtopic";
   private static final String ACTION_TYPE_UPDATE_MESSAGE = "update_message";
@@ -181,6 +182,10 @@ public class BotController {
       case (int) CMD_STATIC_SUGGESTIONS:
         logger.info("Matched CMD_STATIC_SUGGESTIONS");
         sendStaticSuggestionsCard(spaceName, threadName);
+        break;
+      case (int) CMD_PLATFORM_SUGGESTIONS:
+        logger.info("Matched CMD_PLATFORM_SUGGESTIONS");
+        sendPlatformSuggestionsCard(spaceName, threadName);
         break;
       default:
         logger.warn("Unhandled app command ID: {}", commandId);
@@ -547,6 +552,52 @@ public class BotController {
       logger.info("Sent static suggestions card to {}", spaceName);
     } catch (Exception e) {
       logger.error("Failed to send static suggestions card to " + spaceName, e);
+    }
+  }
+
+  private void sendPlatformSuggestionsCard(String spaceName, String threadName) {
+    if (chatServiceClient == null) {
+      logger.error("ChatServiceClient not initialized.");
+      return;
+    }
+    try {
+      // Create SelectionInput with Platform Data Source (Users)
+      SelectionInput selectionInput =
+          SelectionInput.newBuilder()
+              .setName("platform_selection_input")
+              .setLabel("Platform Suggestions (Users)")
+              .setType(SelectionInput.SelectionType.MULTI_SELECT)
+              .setMultiSelectMaxSelectedItems(3)
+              .setPlatformDataSource(
+                  SelectionInput.PlatformDataSource.newBuilder()
+                      .setCommonDataSource(SelectionInput.PlatformDataSource.CommonDataSource.USER))
+              .build();
+
+      Card card =
+          Card.newBuilder()
+              .setHeader(CardHeader.newBuilder().setTitle("Platform Suggestions Card"))
+              .addSections(
+                  Section.newBuilder()
+                      .addWidgets(Widget.newBuilder().setSelectionInput(selectionInput)))
+              .build();
+
+      CardWithId cardWithId =
+          CardWithId.newBuilder().setCardId("platform-suggestions-card").setCard(card).build();
+
+      Message.Builder messageBuilder = Message.newBuilder().addCardsV2(cardWithId);
+      if (threadName != null && !threadName.isEmpty()) {
+        messageBuilder.setThread(Thread.newBuilder().setName(threadName));
+      }
+      Message messageToSend = messageBuilder.build();
+
+      CreateMessageRequest request =
+          CreateMessageRequest.newBuilder().setParent(spaceName).setMessage(messageToSend).build();
+      logger.info(
+          "Attempting to send platform suggestions card to {} (thread: {})", spaceName, threadName);
+      chatServiceClient.createMessage(request);
+      logger.info("Sent platform suggestions card to {}", spaceName);
+    } catch (Exception e) {
+      logger.error("Failed to send platform suggestions card to " + spaceName, e);
     }
   }
 }
