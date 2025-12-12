@@ -67,8 +67,6 @@ public class BotController {
           "Initializing ChatServiceClient with endpoint: {} and scope: {}",
           CHAT_API_ENDPOINT,
           CHAT_SCOPE);
-      // Enable pretty printing for JSON logs
-      objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
 
       GoogleCredentials credentials =
           GoogleCredentials.getApplicationDefault().createScoped(ImmutableList.of(CHAT_SCOPE));
@@ -114,12 +112,19 @@ public class BotController {
 
       JsonNode event = objectMapper.readTree(decodedData);
 
-      // Echo the received event to the chat for debugging
-      String spaceName = extractSpaceName(event);
-      if (spaceName != null && !spaceName.isEmpty() && !isBotMessage(event)) {
-        String threadName = extractThreadName(event);
-        String prettyJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(event);
-        reply(spaceName, threadName, "Received Event:\n```\n" + prettyJson + "\n```");
+      // Echo the received event to the chat for debugging (Best Effort)
+      try {
+        String spaceName = extractSpaceName(event);
+        if (spaceName != null && !spaceName.isEmpty() && !isBotMessage(event)) {
+          String threadName = extractThreadName(event);
+          String prettyJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(event);
+          if (prettyJson.length() > 3500) { 
+            prettyJson = prettyJson.substring(0, 3500) + "\n... (truncated)";
+          }
+          reply(spaceName, threadName, "Received Event:\n```\n" + prettyJson + "\n```");
+        }
+      } catch (Exception e) {
+        logger.error("Failed to echo event to chat", e);
       }
 
       JsonNode commonEventObject = event.path("commonEventObject");
