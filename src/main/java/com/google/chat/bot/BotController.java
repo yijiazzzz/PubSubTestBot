@@ -51,8 +51,7 @@ public class BotController {
   private static final long CMD_STATIC_SUGGESTIONS = 4;
   private static final long CMD_PLATFORM_SUGGESTIONS = 5;
   private static final long CMD_ACCESSORY_WIDGET = 6;
-  private static final String ACTION_CARD_CLICK =
-      "projects/pubsubchaddontestapp/topics/testpubsubtopic";
+  private static final String ACTION_CARD_CLICK = "cardClicked";
   private static final String ACTION_TYPE_UPDATE_MESSAGE = "update_message";
   private static final String ACTION_KEY_STATIC_SUGGESTIONS_SUBMIT = "static_suggestions_submit";
   private static final String ACTION_KEY_PLATFORM_SUGGESTIONS_SUBMIT =
@@ -362,7 +361,9 @@ public class BotController {
         reply(spaceName, null, "Accessory widget button clicked!");
       } else {
         // Default handling for other button clicks (e.g., generic click)
-        reply(spaceName, null, "Button clicked! (Action: " + actionMethodName + ")");
+        String displayAction =
+            "MISSING_FUNCTION".equals(actionMethodName) ? "Generic Click" : actionMethodName;
+        reply(spaceName, null, "Button clicked! (Action: " + displayAction + ")");
       }
     } else {
       logger.warn(
