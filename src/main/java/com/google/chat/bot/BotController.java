@@ -23,17 +23,13 @@ import com.google.chat.v1.Message;
 import com.google.chat.v1.Thread;
 import com.google.chat.v1.UpdateMessageRequest;
 import com.google.common.collect.ImmutableList;
-import com.google.api.gax.retrying.RetrySettings;
 import com.google.protobuf.FieldMask;
 import com.google.protobuf.util.JsonFormat; // Import for converting Proto to JSON
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import java.io.IOException;
-import java.time.Duration;
 import java.util.Base64;
 import java.util.UUID;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -45,8 +41,6 @@ public class BotController {
 
   private static final Logger logger = LoggerFactory.getLogger(BotController.class);
   private final ObjectMapper objectMapper = new ObjectMapper();
-  // Executor for async message processing to prevent Pub/Sub timeouts
-  private final ExecutorService executorService = Executors.newCachedThreadPool();
   private ChatServiceClient chatServiceClient;
 
   private static final String CHAT_API_ENDPOINT = "chat.googleapis.com:443";
@@ -79,28 +73,12 @@ public class BotController {
 
       GoogleCredentials credentials =
           GoogleCredentials.getApplicationDefault().createScoped(ImmutableList.of(CHAT_SCOPE));
-
-      // Configure a longer timeout to handle potential network/DNS delays
-      RetrySettings retrySettings =
-          RetrySettings.newBuilder()
-              .setInitialRetryDelay(Duration.ofMillis(1000))
-              .setRetryDelayMultiplier(1.3)
-              .setMaxRetryDelay(Duration.ofMillis(10000))
-              .setInitialRpcTimeout(Duration.ofSeconds(30))
-              .setRpcTimeoutMultiplier(1.0)
-              .setMaxRpcTimeout(Duration.ofSeconds(30))
-              .setTotalTimeout(Duration.ofSeconds(30))
-              .build();
-
-      ChatServiceSettings.Builder chatServiceSettingsBuilder =
+      ChatServiceSettings chatServiceSettings =
           ChatServiceSettings.newBuilder()
               .setEndpoint(CHAT_API_ENDPOINT)
-              .setCredentialsProvider(FixedCredentialsProvider.create(credentials));
-
-      chatServiceSettingsBuilder.createMessageSettings().setRetrySettings(retrySettings);
-      chatServiceSettingsBuilder.updateMessageSettings().setRetrySettings(retrySettings);
-
-      chatServiceClient = ChatServiceClient.create(chatServiceSettingsBuilder.build());
+              .setCredentialsProvider(FixedCredentialsProvider.create(credentials))
+              .build();
+      chatServiceClient = ChatServiceClient.create(chatServiceSettings);
       logger.info("ChatServiceClient initialized successfully.");
     } catch (Exception e) {
       logger.error("Failed to initialize ChatServiceClient", e);
@@ -114,16 +92,8 @@ public class BotController {
   @PostMapping("/")
   public void receiveMessage(@RequestBody String body) {
     logger.info("receiveMessage START - Raw Body: {}", body);
-    // Process asynchronously to avoid blocking Pub/Sub and causing timeouts/retries.
-    executorService.submit(
-        () -> {
-          try {
-            processMessage(body);
-          } catch (Exception e) {
-            logger.error("Error in async processMessage", e);
-          }
-        });
-    logger.info("receiveMessage END (Submitted to executor)");
+    processMessage(body);
+    logger.info("receiveMessage END");
   }
 
   private void processMessage(String body) {
@@ -263,18 +233,13 @@ public class BotController {
     // Log the entire metadata for debugging
     logger.info("App command metadata: {}", metadata.toString());
 
-    // Send a log message to the chat
-    logToChat(spaceName, "App command received. ID: " + commandId);
-
     switch ((int) commandId) {
       case (int) CMD_PUBSUBTEST:
         logger.info("Matched CMD_PUBSUBTEST");
-        logToChat(spaceName, "Processing CMD_PUBSUBTEST");
         reply(spaceName, threadName, "Chaddon slash command /pubsubtest invoked!");
         break;
       case (int) CMD_CREATE_CARD:
         logger.info("Matched CMD_CREATE_CARD");
-        logToChat(spaceName, "Processing CMD_CREATE_CARD");
         sendCardWithButton(spaceName, threadName);
         break;
       case (int) CMD_UPDATE_MESSAGE_CARD:
@@ -470,20 +435,6 @@ public class BotController {
   }
 
   // --- Helper Methods ---
-  private void logToChat(String spaceName, String logMessage) {
-    if (chatServiceClient == null || spaceName == null || spaceName.isEmpty()) {
-      return;
-    }
-    try {
-      Message message = Message.newBuilder().setText("[LOG] " + logMessage).build();
-      CreateMessageRequest request =
-          CreateMessageRequest.newBuilder().setParent(spaceName).setMessage(message).build();
-      chatServiceClient.createMessage(request);
-    } catch (Exception e) {
-      logger.error("Failed to send log to chat: " + logMessage, e);
-    }
-  }
-
   private void updateMessage(String messageName, String text) {
     if (chatServiceClient == null) {
       logger.error("ChatServiceClient not initialized.");
