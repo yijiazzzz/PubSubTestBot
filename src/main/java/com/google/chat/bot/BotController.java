@@ -23,11 +23,13 @@ import com.google.chat.v1.Message;
 import com.google.chat.v1.Thread;
 import com.google.chat.v1.UpdateMessageRequest;
 import com.google.common.collect.ImmutableList;
+import com.google.api.gax.retrying.RetrySettings;
 import com.google.protobuf.FieldMask;
 import com.google.protobuf.util.JsonFormat; // Import for converting Proto to JSON
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.Base64;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -77,12 +79,28 @@ public class BotController {
 
       GoogleCredentials credentials =
           GoogleCredentials.getApplicationDefault().createScoped(ImmutableList.of(CHAT_SCOPE));
-      ChatServiceSettings chatServiceSettings =
+
+      // Configure a longer timeout to handle potential network/DNS delays
+      RetrySettings retrySettings =
+          RetrySettings.newBuilder()
+              .setInitialRetryDelay(Duration.ofMillis(1000))
+              .setRetryDelayMultiplier(1.3)
+              .setMaxRetryDelay(Duration.ofMillis(10000))
+              .setInitialRpcTimeout(Duration.ofSeconds(30))
+              .setRpcTimeoutMultiplier(1.0)
+              .setMaxRpcTimeout(Duration.ofSeconds(30))
+              .setTotalTimeout(Duration.ofSeconds(30))
+              .build();
+
+      ChatServiceSettings.Builder chatServiceSettingsBuilder =
           ChatServiceSettings.newBuilder()
               .setEndpoint(CHAT_API_ENDPOINT)
-              .setCredentialsProvider(FixedCredentialsProvider.create(credentials))
-              .build();
-      chatServiceClient = ChatServiceClient.create(chatServiceSettings);
+              .setCredentialsProvider(FixedCredentialsProvider.create(credentials));
+
+      chatServiceSettingsBuilder.createMessageSettings().setRetrySettings(retrySettings);
+      chatServiceSettingsBuilder.updateMessageSettings().setRetrySettings(retrySettings);
+
+      chatServiceClient = ChatServiceClient.create(chatServiceSettingsBuilder.build());
       logger.info("ChatServiceClient initialized successfully.");
     } catch (Exception e) {
       logger.error("Failed to initialize ChatServiceClient", e);
