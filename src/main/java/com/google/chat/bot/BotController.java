@@ -29,6 +29,9 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import java.io.IOException;
 import java.util.Base64;
+import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -40,6 +43,8 @@ public class BotController {
 
   private static final Logger logger = LoggerFactory.getLogger(BotController.class);
   private final ObjectMapper objectMapper = new ObjectMapper();
+  // Executor for async message processing to prevent Pub/Sub timeouts
+  private final ExecutorService executorService = Executors.newCachedThreadPool();
   private ChatServiceClient chatServiceClient;
 
   private static final String CHAT_API_ENDPOINT = "chat.googleapis.com:443";
@@ -51,7 +56,8 @@ public class BotController {
   private static final long CMD_STATIC_SUGGESTIONS = 4;
   private static final long CMD_PLATFORM_SUGGESTIONS = 5;
   private static final long CMD_ACCESSORY_WIDGET = 6;
-  private static final String ACTION_CARD_CLICK = "cardClicked";
+  private static final String ACTION_CARD_CLICK =
+      "projects/pubsubchaddontestapp/topics/testpubsubtopic";
   private static final String ACTION_TYPE_UPDATE_MESSAGE = "update_message";
   private static final String ACTION_KEY_STATIC_SUGGESTIONS_SUBMIT = "static_suggestions_submit";
   private static final String ACTION_KEY_PLATFORM_SUGGESTIONS_SUBMIT =
@@ -90,6 +96,19 @@ public class BotController {
   @PostMapping("/")
   public void receiveMessage(@RequestBody String body) {
     logger.info("receiveMessage START - Raw Body: {}", body);
+    // Process asynchronously to avoid blocking Pub/Sub and causing timeouts/retries.
+    executorService.submit(
+        () -> {
+          try {
+            processMessage(body);
+          } catch (Exception e) {
+            logger.error("Error in async processMessage", e);
+          }
+        });
+    logger.info("receiveMessage END (Submitted to executor)");
+  }
+
+  private void processMessage(String body) {
     if (chatServiceClient == null) {
       logger.error("Cannot process message, ChatServiceClient is not initialized.");
       return;
@@ -113,13 +132,7 @@ public class BotController {
 
       JsonNode event = objectMapper.readTree(decodedData);
 
-      // Echo the received event to the chat for debugging
       String spaceName = extractSpaceName(event);
-      if (spaceName != null && !spaceName.isEmpty() && !isBotMessage(event)) {
-        String threadName = extractThreadName(event);
-        String prettyJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(event);
-        reply(spaceName, threadName, "Received Event:\n```\n" + prettyJson + "\n```");
-      }
 
       JsonNode commonEventObject = event.path("commonEventObject");
       JsonNode chatNode = event.path("chat");
@@ -144,11 +157,10 @@ public class BotController {
       }
 
     } catch (IOException e) {
-      logger.error("Error processing JSON in receiveMessage", e);
+      logger.error("Error processing JSON in processMessage", e);
     } catch (Exception e) {
-      logger.error("Error in receiveMessage", e);
+      logger.error("Error in processMessage", e);
     }
-    logger.info("receiveMessage END");
   }
 
   private String extractSpaceName(JsonNode event) {
@@ -232,13 +244,19 @@ public class BotController {
     logger.info("App command ID: {}", commandId);
     // Log the entire metadata for debugging
     logger.info("App command metadata: {}", metadata.toString());
+
+    // Send a log message to the chat
+    logToChat(spaceName, "App command received. ID: " + commandId);
+
     switch ((int) commandId) {
       case (int) CMD_PUBSUBTEST:
         logger.info("Matched CMD_PUBSUBTEST");
+        logToChat(spaceName, "Processing CMD_PUBSUBTEST");
         reply(spaceName, threadName, "Chaddon slash command /pubsubtest invoked!");
         break;
       case (int) CMD_CREATE_CARD:
         logger.info("Matched CMD_CREATE_CARD");
+        logToChat(spaceName, "Processing CMD_CREATE_CARD");
         sendCardWithButton(spaceName, threadName);
         break;
       case (int) CMD_UPDATE_MESSAGE_CARD:
@@ -434,6 +452,20 @@ public class BotController {
   }
 
   // --- Helper Methods ---
+  private void logToChat(String spaceName, String logMessage) {
+    if (chatServiceClient == null || spaceName == null || spaceName.isEmpty()) {
+      return;
+    }
+    try {
+      Message message = Message.newBuilder().setText("[LOG] " + logMessage).build();
+      CreateMessageRequest request =
+          CreateMessageRequest.newBuilder().setParent(spaceName).setMessage(message).build();
+      chatServiceClient.createMessage(request);
+    } catch (Exception e) {
+      logger.error("Failed to send log to chat: " + logMessage, e);
+    }
+  }
+
   private void updateMessage(String messageName, String text) {
     if (chatServiceClient == null) {
       logger.error("ChatServiceClient not initialized.");
@@ -485,7 +517,10 @@ public class BotController {
               .build();
 
       CardWithId cardWithId =
-          CardWithId.newBuilder().setCardId("update-card-1").setCard(card).build();
+          CardWithId.newBuilder()
+              .setCardId("update-card-" + UUID.randomUUID().toString())
+              .setCard(card)
+              .build();
 
       Message.Builder messageBuilder = Message.newBuilder().addCardsV2(cardWithId);
       if (threadName != null && !threadName.isEmpty()) {
@@ -558,7 +593,10 @@ public class BotController {
               .build();
 
       CardWithId cardWithId =
-          CardWithId.newBuilder().setCardId("interactive-card-1").setCard(card).build();
+          CardWithId.newBuilder()
+              .setCardId("interactive-card-" + UUID.randomUUID().toString())
+              .setCard(card)
+              .build();
 
       Message.Builder messageBuilder = Message.newBuilder().addCardsV2(cardWithId);
       if (threadName != null && !threadName.isEmpty()) {
@@ -641,7 +679,10 @@ public class BotController {
               .build();
 
       CardWithId cardWithId =
-          CardWithId.newBuilder().setCardId("static-suggestions-card").setCard(card).build();
+          CardWithId.newBuilder()
+              .setCardId("static-suggestions-card-" + UUID.randomUUID().toString())
+              .setCard(card)
+              .build();
 
       Message.Builder messageBuilder = Message.newBuilder().addCardsV2(cardWithId);
       if (threadName != null && !threadName.isEmpty()) {
@@ -705,7 +746,10 @@ public class BotController {
               .build();
 
       CardWithId cardWithId =
-          CardWithId.newBuilder().setCardId("platform-suggestions-card").setCard(card).build();
+          CardWithId.newBuilder()
+              .setCardId("platform-suggestions-card-" + UUID.randomUUID().toString())
+              .setCard(card)
+              .build();
 
       Message.Builder messageBuilder = Message.newBuilder().addCardsV2(cardWithId);
       if (threadName != null && !threadName.isEmpty()) {
@@ -759,7 +803,10 @@ public class BotController {
               .build();
 
       CardWithId cardWithId =
-          CardWithId.newBuilder().setCardId("accessory-widget-card").setCard(card).build();
+          CardWithId.newBuilder()
+              .setCardId("accessory-widget-card-" + UUID.randomUUID().toString())
+              .setCard(card)
+              .build();
 
       Message.Builder messageBuilder = Message.newBuilder().addCardsV2(cardWithId);
       if (threadName != null && !threadName.isEmpty()) {
