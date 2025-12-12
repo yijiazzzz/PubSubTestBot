@@ -122,6 +122,19 @@ public class BotController {
 
       String spaceName = extractSpaceName(event);
 
+      if (spaceName != null && !isBotMessage(event)) {
+        try {
+          String prettyEvent =
+              objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(event);
+          reply(
+              spaceName,
+              extractThreadName(event),
+              "Received Event:\n```\n" + prettyEvent + "\n```");
+        } catch (Exception e) {
+          logger.error("Failed to log event to chat", e);
+        }
+      }
+
       JsonNode commonEventObject = event.path("commonEventObject");
       JsonNode chatNode = event.path("chat");
 
@@ -188,6 +201,14 @@ public class BotController {
     if (chatNode.has("appCommandPayload")) {
       return chatNode
           .path("appCommandPayload")
+          .path("message")
+          .path("thread")
+          .path("name")
+          .asText();
+    }
+    if (chatNode.has("buttonClickedPayload")) {
+      return chatNode
+          .path("buttonClickedPayload")
           .path("message")
           .path("thread")
           .path("name")
