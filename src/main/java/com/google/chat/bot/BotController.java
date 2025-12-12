@@ -113,28 +113,13 @@ public class BotController {
       logger.info("DEBUG: Decoded Pub/Sub Data: {}", decodedData); // *** CRUCIAL LOG ***
 
       JsonNode event = objectMapper.readTree(decodedData);
-      // logger.info("Parsed event JSON: {}", event.toString()); // Keep for structure view
 
-      JsonNode commonEventObject = event.path("commonEventObject");
-      JsonNode chatNode = event.path("chat");
-
-      if (commonEventObject.has("invokedFunction")) {
-        logger.info("DEBUG: Detected commonEventObject.invokedFunction");
-        handleCardClicked(event);
-      } else if (chatNode.has("buttonClickedPayload")) {
-        logger.info("DEBUG: Detected chat.buttonClickedPayload");
-        handleCardClicked(event);
-      } else if (chatNode.has("appCommandPayload")) {
-        logger.info("DEBUG: Detected chat.appCommandPayload");
-        handleAppCommand(chatNode.path("appCommandPayload"));
-      } else if (chatNode.has("messagePayload")) {
-        logger.info("DEBUG: Detected chat.messagePayload");
-        handleChatMessage(chatNode.path("messagePayload"));
-      } else if (chatNode.has("addedToSpacePayload")) {
-        logger.info("DEBUG: Detected chat.addedToSpacePayload");
-        handleAddedToSpace(chatNode.path("addedToSpacePayload"));
-      } else {
-        logger.warn("DEBUG: Unhandled Chat event structure. Keys: {}", event.fieldNames());
+      // Echo the received event to the chat for debugging
+      String spaceName = extractSpaceName(event);
+      if (spaceName != null && !spaceName.isEmpty() && !isBotMessage(event)) {
+        String threadName = extractThreadName(event);
+        String prettyJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(event);
+        reply(spaceName, threadName, "Received Event:\n```\n" + prettyJson + "\n```");
       }
 
     } catch (IOException e) {
@@ -143,6 +128,61 @@ public class BotController {
       logger.error("Error in receiveMessage", e);
     }
     logger.info("receiveMessage END");
+  }
+
+  private String extractSpaceName(JsonNode event) {
+    JsonNode chatNode = event.path("chat");
+    if (chatNode.has("messagePayload")) {
+      return chatNode.path("messagePayload").path("space").path("name").asText();
+    }
+    if (chatNode.has("appCommandPayload")) {
+      return chatNode.path("appCommandPayload").path("space").path("name").asText();
+    }
+    if (chatNode.has("addedToSpacePayload")) {
+      return chatNode.path("addedToSpacePayload").path("space").path("name").asText();
+    }
+    if (chatNode.has("buttonClickedPayload")) {
+      return chatNode.path("buttonClickedPayload").path("space").path("name").asText();
+    }
+    if (chatNode.has("space")) {
+      return chatNode.path("space").path("name").asText();
+    }
+    JsonNode commonEventObject = event.path("commonEventObject");
+    if (commonEventObject.has("hostAppMetadata")) {
+      return commonEventObject
+          .path("hostAppMetadata")
+          .path("chat")
+          .path("space")
+          .path("name")
+          .asText();
+    }
+    return null;
+  }
+
+  private String extractThreadName(JsonNode event) {
+    JsonNode chatNode = event.path("chat");
+    if (chatNode.has("messagePayload")) {
+      return chatNode.path("messagePayload").path("message").path("thread").path("name").asText();
+    }
+    if (chatNode.has("appCommandPayload")) {
+      return chatNode
+          .path("appCommandPayload")
+          .path("message")
+          .path("thread")
+          .path("name")
+          .asText();
+    }
+    return null;
+  }
+
+  private boolean isBotMessage(JsonNode event) {
+    JsonNode chatNode = event.path("chat");
+    if (chatNode.has("messagePayload")) {
+      return "BOT"
+          .equals(
+              chatNode.path("messagePayload").path("message").path("sender").path("type").asText());
+    }
+    return false;
   }
 
   private void handleAddedToSpace(JsonNode addedToSpacePayload) {
