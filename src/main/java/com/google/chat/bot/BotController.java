@@ -122,6 +122,28 @@ public class BotController {
         reply(spaceName, threadName, "Received Event:\n```\n" + prettyJson + "\n```");
       }
 
+      JsonNode commonEventObject = event.path("commonEventObject");
+      JsonNode chatNode = event.path("chat");
+
+      if (commonEventObject.has("invokedFunction")) {
+        logger.info("DEBUG: Detected commonEventObject.invokedFunction");
+        handleCardClicked(event);
+      } else if (chatNode.has("buttonClickedPayload")) {
+        logger.info("DEBUG: Detected chat.buttonClickedPayload");
+        handleCardClicked(event);
+      } else if (chatNode.has("appCommandPayload")) {
+        logger.info("DEBUG: Detected chat.appCommandPayload");
+        handleAppCommand(chatNode.path("appCommandPayload"));
+      } else if (chatNode.has("messagePayload")) {
+        logger.info("DEBUG: Detected chat.messagePayload");
+        handleChatMessage(chatNode.path("messagePayload"));
+      } else if (chatNode.has("addedToSpacePayload")) {
+        logger.info("DEBUG: Detected chat.addedToSpacePayload");
+        handleAddedToSpace(chatNode.path("addedToSpacePayload"));
+      } else {
+        logger.warn("DEBUG: Unhandled Chat event structure. Keys: {}", event.fieldNames());
+      }
+
     } catch (IOException e) {
       logger.error("Error processing JSON in receiveMessage", e);
     } catch (Exception e) {
