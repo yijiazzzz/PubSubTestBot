@@ -114,14 +114,6 @@ public class BotController {
 
       JsonNode event = objectMapper.readTree(decodedData);
 
-      // Echo the received event to the chat for debugging
-      String spaceName = extractSpaceName(event);
-      if (spaceName != null && !spaceName.isEmpty() && !isBotMessage(event)) {
-        String threadName = extractThreadName(event);
-        String prettyJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(event);
-        reply(spaceName, threadName, "Received Event:\n```\n" + prettyJson + "\n```");
-      }
-
       JsonNode commonEventObject = event.path("commonEventObject");
       JsonNode chatNode = event.path("chat");
 
@@ -142,6 +134,22 @@ public class BotController {
         handleAddedToSpace(chatNode.path("addedToSpacePayload"));
       } else {
         logger.warn("DEBUG: Unhandled Chat event structure. Keys: {}", event.fieldNames());
+      }
+
+      // Echo the received event to the chat for debugging (Best Effort)
+      try {
+        String spaceName = extractSpaceName(event);
+        if (spaceName != null && !spaceName.isEmpty() && !isBotMessage(event)) {
+          String threadName = extractThreadName(event);
+          String prettyJson =
+              objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(event);
+          if (prettyJson.length() > 3500) { // Leave room for formatting
+            prettyJson = prettyJson.substring(0, 3500) + "\n... (truncated)";
+          }
+          reply(spaceName, threadName, "Received Event:\n```\n" + prettyJson + "\n```");
+        }
+      } catch (Exception e) {
+        logger.error("Failed to echo event to chat", e);
       }
 
     } catch (IOException e) {
